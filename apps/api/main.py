@@ -14,15 +14,30 @@ if _project_root not in sys.path:
 
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from apps.api.api.v1.events import router as events_v1_router
+from apps.api.api.v1.test_ui import router as test_ui_router
 from packages.domain.config import get_settings
 from packages.domain.logging import logger, setup_logging
 from packages.storage.db import check_db_connection
 
 settings = get_settings()
 setup_logging(settings.LOG_LEVEL)
+
+def _load_dashboard_html() -> str:
+    potential_paths = [
+        Path(__file__).resolve().parent / "templates" / "dashboard.html",
+        Path.cwd() / "apps" / "api" / "templates" / "dashboard.html",
+        Path.cwd() / "templates" / "dashboard.html",
+    ]
+    for p in potential_paths:
+        if p.exists():
+            return p.read_text(encoding="utf-8")
+    return ""
+
+
+_dashboard_html = _load_dashboard_html()
 
 
 @asynccontextmanager
@@ -78,20 +93,36 @@ async def correlation_id_middleware(request: Request, call_next):
 
 # Include API Routers
 app.include_router(events_v1_router, prefix=settings.API_V1_PREFIX)
+app.include_router(test_ui_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/", tags=["Root"])
-async def root():
-    """Root endpoint welcoming users and providing API documentation links."""
+async def root(request: Request):
+    """Root endpoint welcoming users, providing API documentation links or rendering the Testing Dashboard."""
+    accept = request.headers.get("accept", "")
+    html = _dashboard_html or _load_dashboard_html()
+    if "text/html" in accept and html:
+        return HTMLResponse(content=html)
     return {
         "platform": "AI Freight Information & Execution Platform",
         "status": "operational",
         "version": "0.1.0",
+        "dashboard_url": "/dashboard",
         "docs_url": "/docs",
         "health_url": "/health",
         "ready_url": "/ready",
         "inbound_events_url": f"{settings.API_V1_PREFIX}/events/inbound",
+        "test_ui_url": f"{settings.API_V1_PREFIX}/test-ui/state",
     }
+
+
+@app.get("/dashboard", response_class=HTMLResponse, tags=["Testing Dashboard"])
+async def dashboard():
+    """Phase 1 Testing Dashboard for evaluating incoming emails and agent execution."""
+    html = _dashboard_html or _load_dashboard_html()
+    if html:
+        return HTMLResponse(content=html)
+    return HTMLResponse("<h1>AI Freight Execution Platform</h1><p>Dashboard template loading...</p>")
 
 
 @app.get("/health", tags=["System"])

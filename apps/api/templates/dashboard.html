@@ -1,0 +1,517 @@
+﻿<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Freight Execution Platform — Phase 1 Test Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    pre { white-space: pre-wrap; word-break: break-all; }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased text-slate-200">
+  <!-- Top Navigation Bar -->
+  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50 px-6 py-3.5 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <div class="h-8 w-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-lg">⚡</div>
+      <div>
+        <h1 class="text-base font-semibold text-white leading-tight">AI Freight Execution Platform</h1>
+        <p class="text-xs text-slate-400">Phase 1 Developer & Operator Testing Console</p>
+      </div>
+    </div>
+    <div class="flex items-center space-x-3 text-xs">
+      <span id="backend-status-pill" class="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>
+        API: Operational
+      </span>
+      <span id="db-status-pill" class="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+        Supabase: Connecting...
+      </span>
+      <button onclick="seedDatabase()" id="btn-seed" class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+        🔄 Reset / Seed Test Data
+      </button>
+      <a href="/docs" target="_blank" class="px-3 py-1 rounded bg-indigo-950 hover:bg-indigo-900 text-indigo-300 border border-indigo-800 transition">
+        Swagger Docs ↗
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <!-- Left Column: Mailbox & Scenarios (5 cols) -->
+    <div class="lg:col-span-5 flex flex-col space-y-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-white flex items-center">
+            <span class="text-base mr-2">📬</span> Inbound Test Mailbox
+          </h2>
+          <span id="mail-count" class="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">4 scenarios</span>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">Select a realistic freight carrier email or compose your own to test agent extraction & execution:</p>
+        
+        <!-- Scenario List -->
+        <div id="email-scenarios" class="space-y-2 max-h-64 overflow-y-auto pr-1">
+          <div class="text-xs text-slate-500 py-4 text-center">Loading scenarios...</div>
+        </div>
+      </div>
+
+      <!-- Active Email Inspector / Composer -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex-1 flex flex-col">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Email Message Payload</h3>
+          <button onclick="toggleComposer()" id="btn-toggle-compose" class="text-xs text-emerald-400 hover:text-emerald-300">
+            + Compose Custom
+          </button>
+        </div>
+
+        <div class="space-y-2 text-xs flex-1 flex flex-col">
+          <div>
+            <label class="text-slate-500 block mb-0.5">Sender</label>
+            <input id="input-sender" type="text" class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-slate-200 focus:border-emerald-500 focus:outline-none" />
+          </div>
+          <div>
+            <label class="text-slate-500 block mb-0.5">Subject</label>
+            <input id="input-subject" type="text" class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium" />
+          </div>
+          <div class="flex-1 flex flex-col">
+            <label class="text-slate-500 block mb-0.5">Body</label>
+            <textarea id="input-body" rows="6" class="w-full flex-1 bg-slate-950 border border-slate-800 rounded p-2 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono text-xs"></textarea>
+          </div>
+        </div>
+
+        <button id="btn-process" onclick="processActiveEmail()" class="mt-4 w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm flex items-center justify-center space-x-2 transition shadow-lg shadow-emerald-950">
+          <span>⚡ Run Autonomous Agent</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Right Column: Live Agent Execution & Trace (7 cols) -->
+    <div class="lg:col-span-7 flex flex-col space-y-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex-1 flex flex-col">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+          <div class="flex items-center space-x-2">
+            <span class="text-base">🧠</span>
+            <h2 class="text-sm font-semibold text-white">Live Agent Execution & Trace</h2>
+          </div>
+          <span id="trace-status" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400">Idle / Awaiting Trigger</span>
+        </div>
+
+        <!-- Trace Visualizer Content -->
+        <div id="trace-container" class="space-y-4 flex-1 overflow-y-auto pr-1">
+          <!-- Placeholder before first run -->
+          <div id="trace-placeholder" class="h-64 flex flex-col items-center justify-center text-center p-8 border border-dashed border-slate-800 rounded-lg">
+            <div class="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-2xl mb-3">🚚</div>
+            <h3 class="text-sm font-medium text-slate-300">Ready to Evaluate Agent</h3>
+            <p class="text-xs text-slate-500 max-w-sm mt-1">
+              Select an incoming freight email on the left and click <strong class="text-emerald-400">"Run Autonomous Agent"</strong> to watch the resolver, intent classifier, tool execution, and live database updates in real time.
+            </p>
+          </div>
+
+          <!-- Live Step 1: Entity Resolution -->
+          <div id="trace-step-resolver" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-emerald-400 flex items-center">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 mr-1.5"></span> 1. Deterministic Shipment Resolver
+              </span>
+              <span id="match-badge" class="text-xs px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">Matched</span>
+            </div>
+            <div id="matched-shipment-details" class="text-xs text-slate-300 bg-slate-900 rounded p-2 border border-slate-800 font-mono"></div>
+          </div>
+
+          <!-- Live Step 2: Intent Classification & Decision -->
+          <div id="trace-step-decision" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-indigo-400 flex items-center">
+                <span class="w-2 h-2 rounded-full bg-indigo-400 mr-1.5"></span> 2. LangGraph Intent & Decision
+              </span>
+              <span id="confidence-badge" class="text-xs px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">Confidence: 100%</span>
+            </div>
+            <div id="decision-details" class="text-xs text-slate-300 bg-slate-900 rounded p-2 border border-slate-800"></div>
+          </div>
+
+          <!-- Live Step 3: Tool Invocations -->
+          <div id="trace-step-tools" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+            <span class="text-xs font-semibold text-amber-400 block mb-2 flex items-center">
+              <span class="w-2 h-2 rounded-full bg-amber-400 mr-1.5"></span> 3. Typed Tool Invocations (RBAC Checked)
+            </span>
+            <div id="tool-calls-list" class="space-y-2"></div>
+          </div>
+
+          <!-- Live Step 4: Live Database State Diff -->
+          <div id="trace-step-diff" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+            <span class="text-xs font-semibold text-sky-400 block mb-2 flex items-center">
+              <span class="w-2 h-2 rounded-full bg-sky-400 mr-1.5"></span> 4. Supabase Database State Mutation (Before vs After)
+            </span>
+            <div id="diff-content" class="text-xs font-mono bg-slate-900 p-2.5 rounded border border-slate-800"></div>
+          </div>
+
+          <!-- Live Step 5: Audit Log & Provenance -->
+          <div id="trace-step-audit" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-purple-400 flex items-center">
+                <span class="w-2 h-2 rounded-full bg-purple-400 mr-1.5"></span> 5. Immutable Audit Log Entry
+              </span>
+              <span id="audit-idempotency-badge" class="text-xs text-slate-500 font-mono"></span>
+            </div>
+            <div id="audit-content" class="text-xs font-mono bg-slate-900 p-2.5 rounded border border-slate-800 text-slate-400"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom Explorer: Supabase Live Tables -->
+  <section class="max-w-7xl w-full mx-auto px-6 pb-8">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+        <div class="flex items-center space-x-2">
+          <span class="text-base">🗄️</span>
+          <h3 class="text-sm font-semibold text-white">Supabase Live Data Explorer</h3>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button onclick="showTab('shipments')" id="tab-btn-shipments" class="px-3 py-1 rounded text-xs bg-slate-800 text-white font-medium">Shipments Table</button>
+          <button onclick="showTab('audit')" id="tab-btn-audit" class="px-3 py-1 rounded text-xs text-slate-400 hover:text-white">Audit Log Table</button>
+          <button onclick="refreshTables()" class="text-xs text-emerald-400 hover:underline ml-2">↻ Refresh</button>
+        </div>
+      </div>
+
+      <!-- Shipments Table View -->
+      <div id="table-shipments-view" class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead>
+            <tr class="border-b border-slate-800 text-slate-400">
+              <th class="py-2 px-3">Load ID</th>
+              <th class="py-2 px-3">Shipment #</th>
+              <th class="py-2 px-3">Status</th>
+              <th class="py-2 px-3">Carrier</th>
+              <th class="py-2 px-3">Carrier PRO / Ref</th>
+              <th class="py-2 px-3">BOL #</th>
+              <th class="py-2 px-3">Route</th>
+              <th class="py-2 px-3">Pickup Date</th>
+              <th class="py-2 px-3">ETA</th>
+            </tr>
+          </thead>
+          <tbody id="shipments-tbody" class="divide-y divide-slate-800 text-slate-300">
+            <tr><td colspan="9" class="text-center py-4 text-slate-500">Loading shipments...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Audit Log Table View -->
+      <div id="table-audit-view" class="overflow-x-auto hidden">
+        <table class="w-full text-left text-xs font-mono">
+          <thead>
+            <tr class="border-b border-slate-800 text-slate-400">
+              <th class="py-2 px-3">Timestamp</th>
+              <th class="py-2 px-3">Event Type</th>
+              <th class="py-2 px-3">Action Taken</th>
+              <th class="py-2 px-3">Actor</th>
+              <th class="py-2 px-3">Idempotency Key</th>
+            </tr>
+          </thead>
+          <tbody id="audit-tbody" class="divide-y divide-slate-800 text-slate-300">
+            <tr><td colspan="5" class="text-center py-4 text-slate-500">Loading audit log...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Script Logic -->
+  <script>
+    let globalEmails = [];
+    let selectedEmailIndex = 0;
+
+    async function loadState() {
+      try {
+        const res = await fetch('/api/v1/test-ui/state');
+        const data = await res.json();
+        
+        // Update DB pill
+        const dbPill = document.getElementById('db-status-pill');
+        if (data.database_connected) {
+          dbPill.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5"></span> Supabase: Connected';
+          dbPill.className = 'inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800';
+        } else {
+          dbPill.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1.5"></span> SQLite In-Memory Mode';
+          dbPill.className = 'inline-flex items-center px-2.5 py-1 rounded-full bg-amber-950 text-amber-300 border border-amber-800';
+        }
+
+        globalEmails = data.preloaded_emails || [];
+        renderScenarios();
+        selectScenario(0);
+        refreshTables();
+      } catch (err) {
+        console.error("Failed to load initial state:", err);
+      }
+    }
+
+    function renderScenarios() {
+      const container = document.getElementById('email-scenarios');
+      document.getElementById('mail-count').innerText = `${globalEmails.length} scenarios`;
+      
+      container.innerHTML = globalEmails.map((e, idx) => `
+        <div onclick="selectScenario(${idx})" class="p-2.5 rounded-lg border cursor-pointer transition ${idx === selectedEmailIndex ? 'bg-slate-800/90 border-emerald-500/50 ring-1 ring-emerald-500/30' : 'bg-slate-950 border-slate-800 hover:border-slate-700'}">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-medium text-xs text-white truncate max-w-[280px]">${e.scenario}</span>
+            <span class="text-[10px] text-slate-500 uppercase">${e.id.split('-')[1] || 'custom'}</span>
+          </div>
+          <div class="text-[11px] text-slate-400 truncate">${e.subject}</div>
+        </div>
+      `).join('');
+    }
+
+    function selectScenario(idx) {
+      selectedEmailIndex = idx;
+      renderScenarios();
+      const email = globalEmails[idx];
+      if (email) {
+        document.getElementById('input-sender').value = email.sender;
+        document.getElementById('input-subject').value = email.subject;
+        document.getElementById('input-body').value = email.body_text;
+      }
+    }
+
+    function toggleComposer() {
+      document.getElementById('input-sender').value = 'dispatch@custom-carrier.com';
+      document.getElementById('input-subject').value = 'Custom: Update for Load 5821';
+      document.getElementById('input-body').value = 'Driver reports delivery complete for Load 5821.';
+      document.getElementById('input-subject').focus();
+    }
+
+    async function seedDatabase() {
+      const btn = document.getElementById('btn-seed');
+      btn.innerText = 'Seeding...';
+      try {
+        await fetch('/api/v1/test-ui/seed', { method: 'POST' });
+        await loadState();
+        btn.innerText = '✓ Seeded Successfully';
+        setTimeout(() => { btn.innerText = '🔄 Reset / Seed Test Data'; }, 2000);
+      } catch (err) {
+        alert("Failed to seed database: " + err);
+        btn.innerText = 'Error';
+      }
+    }
+
+    async function processActiveEmail() {
+      const btn = document.getElementById('btn-process');
+      const traceStatus = document.getElementById('trace-status');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="animate-spin mr-2">⟳</span> Agent Reasoning...';
+      traceStatus.innerText = 'Executing LangGraph Pipeline...';
+      traceStatus.className = 'text-xs px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 animate-pulse';
+
+      const payload = {
+        sender: document.getElementById('input-sender').value,
+        subject: document.getElementById('input-subject').value,
+        body_text: document.getElementById('input-body').value,
+      };
+
+      try {
+        const res = await fetch('/api/v1/test-ui/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const trace = await res.json();
+        renderExecutionTrace(trace);
+        refreshTables();
+      } catch (err) {
+        alert("Agent execution failed: " + err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>⚡ Run Autonomous Agent</span>';
+        traceStatus.innerText = 'Execution Complete';
+        traceStatus.className = 'text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300';
+      }
+    }
+
+    function renderExecutionTrace(trace) {
+      document.getElementById('trace-placeholder').classList.add('hidden');
+
+      // 1. Resolver
+      const resolverStep = document.getElementById('trace-step-resolver');
+      const matchBadge = document.getElementById('match-badge');
+      const matchedDetails = document.getElementById('matched-shipment-details');
+      resolverStep.classList.remove('hidden');
+
+      if (trace.matched_shipment) {
+        matchBadge.innerText = '✓ Match Confirmed (1.0)';
+        matchBadge.className = 'text-xs px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800';
+        matchedDetails.innerHTML = `
+          <div><strong>Shipment ID:</strong> ${trace.matched_shipment.id}</div>
+          <div><strong>Load Reference:</strong> ${trace.matched_shipment.load_id || 'N/A'} | <strong>Shipment #:</strong> ${trace.matched_shipment.shipment_number}</div>
+          <div><strong>Carrier:</strong> ${trace.matched_shipment.carrier_name || 'N/A'}</div>
+        `;
+      } else {
+        matchBadge.innerText = 'No Deterministic Match / Ambiguous';
+        matchBadge.className = 'text-xs px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800';
+        matchedDetails.innerHTML = `<div>No unique shipment record matched the extracted references. Escalating to avoid arbitrary error.</div>`;
+      }
+
+      // 2. Decision
+      const decisionStep = document.getElementById('trace-step-decision');
+      decisionStep.classList.remove('hidden');
+      document.getElementById('confidence-badge').innerText = `Outcome: ${trace.terminal_outcome.toUpperCase()} (${Math.round((trace.confidence || 1) * 100)}%)`;
+      document.getElementById('decision-details').innerHTML = `
+        <div class="font-medium text-white mb-1">Agent Action Proposal:</div>
+        <div class="text-slate-300">${trace.decision || 'No automated action triggered; human escalation.'}</div>
+        <div class="mt-2 text-[11px] text-slate-400">Approval State: <span class="text-indigo-300 uppercase">${trace.approval_state}</span> | Prompt: v0</div>
+      `;
+
+      // 3. Tool Invocations
+      const toolsStep = document.getElementById('trace-step-tools');
+      const toolsList = document.getElementById('tool-calls-list');
+      toolsStep.classList.remove('hidden');
+      if (trace.tool_calls && trace.tool_calls.length > 0) {
+        toolsList.innerHTML = trace.tool_calls.map(tc => `
+          <div class="bg-slate-900 border border-slate-800 rounded p-2 text-xs font-mono">
+            <div class="text-amber-400 font-bold mb-1">🛠️ ${tc.tool_name} <span class="text-[10px] text-slate-500">(${tc.execution_status || 'executed'})</span></div>
+            <div class="text-slate-400">Args: ${JSON.stringify(tc.input_parameters || {})}</div>
+            <div class="text-emerald-400 mt-1">Result: ${JSON.stringify(tc.output_result || {})}</div>
+          </div>
+        `).join('');
+      } else {
+        toolsList.innerHTML = `<div class="text-xs text-slate-500 italic">No tool calls executed (action halted for human safety).</div>`;
+      }
+
+      // 4. State Diff
+      const diffStep = document.getElementById('trace-step-diff');
+      const diffContent = document.getElementById('diff-content');
+      diffStep.classList.remove('hidden');
+      if (trace.matched_shipment && trace.matched_shipment.diff && Object.keys(trace.matched_shipment.diff).length > 0) {
+        diffContent.innerHTML = Object.entries(trace.matched_shipment.diff).map(([k, v]) => `
+          <div class="flex items-center space-x-2 py-0.5">
+            <span class="text-slate-400 w-28">${k}:</span>
+            <span class="text-red-400 line-through">${v.before || 'null'}</span>
+            <span class="text-slate-500">→</span>
+            <span class="text-emerald-400 font-semibold">${v.after || 'null'}</span>
+          </div>
+        `).join('');
+      } else {
+        diffContent.innerHTML = `<span class="text-slate-500">No database columns modified for this run.</span>`;
+      }
+
+      // 5. Audit Log
+      const auditStep = document.getElementById('trace-step-audit');
+      auditStep.classList.remove('hidden');
+      if (trace.audit_log) {
+        document.getElementById('audit-idempotency-badge').innerText = `Key: ${trace.audit_log.idempotency_key ? trace.audit_log.idempotency_key.slice(0, 16) + '...' : 'N/A'}`;
+        document.getElementById('audit-content').innerHTML = `
+          <div>Action: <strong class="text-white">${trace.audit_log.action_taken}</strong> (${trace.audit_log.event_type})</div>
+          <div>Actor: ${trace.audit_log.actor_type} [${trace.audit_log.actor_id || 'agent'}] | Timestamp: ${trace.audit_log.timestamp}</div>
+        `;
+      } else {
+        document.getElementById('audit-content').innerHTML = `<div>Run ID: ${trace.run_id} recorded in agent_runs table.</div>`;
+      }
+    }
+
+    async function refreshTables() {
+      try {
+        const [shipRes, auditRes] = await Promise.all([
+          fetch('/api/v1/test-ui/shipments'),
+          fetch('/api/v1/test-ui/audit-logs')
+        ]);
+        const shipments = await shipRes.json();
+        const audits = await auditRes.json();
+
+        // Render Shipments
+        const shipBody = document.getElementById('shipments-tbody');
+        if (shipments && shipments.length > 0) {
+          shipBody.innerHTML = shipments.map(s => `
+            <tr class="hover:bg-slate-800/50 transition">
+              <td class="py-2 px-3 font-semibold text-white">${s.load_id || '-'}</td>
+              <td class="py-2 px-3 font-mono text-slate-400">${s.shipment_number}</td>
+              <td class="py-2 px-3">
+                <span class="px-2 py-0.5 rounded text-[11px] font-medium ${getStatusClass(s.status)}">
+                  ${s.status}
+                </span>
+              </td>
+              <td class="py-2 px-3">${s.carrier_name || '-'}</td>
+              <td class="py-2 px-3 font-mono">${s.carrier_reference || '-'}</td>
+              <td class="py-2 px-3 font-mono">${s.bol_number || '-'}</td>
+              <td class="py-2 px-3 text-slate-400">${s.origin?.city || ''}, ${s.origin?.state || ''} → ${s.destination?.city || ''}, ${s.destination?.state || ''}</td>
+              <td class="py-2 px-3 text-slate-400">${formatDate(s.pickup_date)}</td>
+              <td class="py-2 px-3 text-slate-400">${formatDate(s.eta)}</td>
+            </tr>
+          `).join('');
+        } else {
+          shipBody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-slate-500">No shipments found. Click "Reset / Seed Test Data" above.</td></tr>`;
+        }
+
+        // Render Audit Log
+        const auditBody = document.getElementById('audit-tbody');
+        if (audits && audits.length > 0) {
+          auditBody.innerHTML = audits.map(a => `
+            <tr class="hover:bg-slate-800/50 transition">
+              <td class="py-2 px-3 text-slate-400">${a.timestamp ? a.timestamp.replace('T', ' ').slice(0, 19) : '-'}</td>
+              <td class="py-2 px-3 text-indigo-400 font-semibold">${a.event_type}</td>
+              <td class="py-2 px-3 text-white">${a.action_taken}</td>
+              <td class="py-2 px-3 text-slate-400">${a.actor_type}</td>
+              <td class="py-2 px-3 text-slate-500 truncate max-w-xs">${a.idempotency_key || '-'}</td>
+            </tr>
+          `).join('');
+        } else {
+          auditBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-slate-500">No audit log records yet.</td></tr>`;
+        }
+      } catch (err) {
+        console.error("Error refreshing tables:", err);
+      }
+    }
+
+    function getStatusClass(status) {
+      switch (status) {
+        case 'in_transit': return 'bg-emerald-950 text-emerald-400 border border-emerald-800';
+        case 'booked': return 'bg-sky-950 text-sky-400 border border-sky-800';
+        case 'delayed': return 'bg-amber-950 text-amber-400 border border-amber-800';
+        case 'delivered': return 'bg-purple-950 text-purple-400 border border-purple-800';
+        default: return 'bg-slate-800 text-slate-300';
+      }
+    }
+
+    function formatDate(val) {
+      if (!val) return '-';
+      return val.replace('T', ' ').slice(0, 16);
+    }
+
+    function showTab(tab) {
+      const shipView = document.getElementById('table-shipments-view');
+      const auditView = document.getElementById('table-audit-view');
+      const btnShip = document.getElementById('tab-btn-shipments');
+      const btnAudit = document.getElementById('tab-btn-audit');
+
+      if (tab === 'shipments') {
+        shipView.classList.remove('hidden');
+        auditView.classList.add('hidden');
+        btnShip.className = 'px-3 py-1 rounded text-xs bg-slate-800 text-white font-medium';
+        btnAudit.className = 'px-3 py-1 rounded text-xs text-slate-400 hover:text-white';
+      } else {
+        shipView.classList.add('hidden');
+        auditView.classList.remove('hidden');
+        btnAudit.className = 'px-3 py-1 rounded text-xs bg-slate-800 text-white font-medium';
+        btnShip.className = 'px-3 py-1 rounded text-xs text-slate-400 hover:text-white';
+      }
+    }
+
+    // Auto-init on page load
+    window.addEventListener('DOMContentLoaded', loadState);
+  </script>
+</body>
+</html>
