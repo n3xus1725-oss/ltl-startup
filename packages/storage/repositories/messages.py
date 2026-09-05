@@ -78,6 +78,9 @@ class MessageRepository(BaseRepository[Message]):
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    def list_by_thread(self, organization_id: uuid.UUID, thread_id: str) -> List[Message]:
+        return self.get_by_thread_id(organization_id, thread_id)
+
     def mark_as_processed(self, organization_id: uuid.UUID, message_id: uuid.UUID) -> Optional[Message]:
         message = self.get_by_id(organization_id, message_id)
         if message:

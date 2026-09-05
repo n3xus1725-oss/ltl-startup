@@ -115,6 +115,7 @@ class Shipment(Base):
     documents = relationship("Document", back_populates="shipment")
     messages = relationship("Message", back_populates="shipment")
     exceptions = relationship("ExceptionRecord", back_populates="shipment")
+    tasks = relationship("TaskRecord", back_populates="shipment")
 
     __table_args__ = (
         UniqueConstraint("organization_id", "shipment_number", name="uq_shipments_org_shipment_number"),
@@ -289,10 +290,41 @@ class ExceptionRecord(Base):
     details = Column(JSON, nullable=True)
     resolution_notes = Column(Text, nullable=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
+    idempotency_key = Column(String(255), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now(), nullable=False)
 
     shipment = relationship("Shipment", back_populates="exceptions")
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "idempotency_key", name="uq_exceptions_org_idemp"),
+    )
+
+
+class TaskRecord(Base):
+    """Operational or review task requiring human or scheduled follow-up."""
+    __tablename__ = "tasks"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    shipment_id = Column(Uuid(as_uuid=True), ForeignKey("shipments.id", ondelete="SET NULL"), nullable=True, index=True)
+    task_type = Column(String(100), nullable=False, default="review")
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    priority = Column(String(20), nullable=False, default="medium")
+    status = Column(String(50), nullable=False, default="pending")
+    assigned_to = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    due_date = Column(DateTime(timezone=True), nullable=True)
+    details = Column(JSON, nullable=True)
+    idempotency_key = Column(String(255), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now(), nullable=False)
+
+    shipment = relationship("Shipment", back_populates="tasks")
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "idempotency_key", name="uq_tasks_org_idemp"),
+    )
 
 
 class AuditLog(Base):

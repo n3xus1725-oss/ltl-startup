@@ -7,6 +7,8 @@ from packages.storage.repositories.messages import MessageRepository
 from packages.storage.repositories.documents import DocumentRepository
 from packages.storage.repositories.audit import AuditLogRepository
 from packages.storage.repositories.agent_runs import AgentRunRepository
+from packages.storage.repositories.tasks import TaskRepository
+from packages.storage.repositories.exceptions import ExceptionRepository
 
 __all__ = [
     "BaseRepository",
@@ -16,4 +18,6 @@ __all__ = [
     "DocumentRepository",
     "AuditLogRepository",
     "AgentRunRepository",
+    "TaskRepository",
+    "ExceptionRepository",
 ]

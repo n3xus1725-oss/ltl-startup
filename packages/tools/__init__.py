@@ -1,1 +1,39 @@
-"""Package initialization."""
+"""Tools package exposing BaseTool, ToolRegistry, and standard shipment/email tools."""
+
+from packages.tools.registry import (
+    BaseTool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolPermissionDenied,
+    ToolNotFoundError,
+    ToolRegistry,
+)
+from packages.tools.shipment_tools import (
+    FindShipmentTool,
+    GetShipmentTool,
+    UpdateShipmentTool,
+    AttachDocumentTool,
+    CreateTaskTool,
+    SendEmailTool,
+    ReplyToThreadTool,
+    CreateExceptionTool,
+    create_standard_tool_registry,
+)
+
+__all__ = [
+    "BaseTool",
+    "ToolContext",
+    "ToolExecutionResult",
+    "ToolPermissionDenied",
+    "ToolNotFoundError",
+    "ToolRegistry",
+    "FindShipmentTool",
+    "GetShipmentTool",
+    "UpdateShipmentTool",
+    "AttachDocumentTool",
+    "CreateTaskTool",
+    "SendEmailTool",
+    "ReplyToThreadTool",
+    "CreateExceptionTool",
+    "create_standard_tool_registry",
+]
