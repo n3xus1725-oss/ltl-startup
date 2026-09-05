@@ -44,3 +44,5 @@ build/
 *.log
 .DS_Store
 Thumbs.db
+.pytest_cache/
+*.sqlite3
