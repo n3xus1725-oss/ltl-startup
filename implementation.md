@@ -1,683 +1,1151 @@
-# Algolyra — Master Implementation Plan (v4)
+# IMPLEMENTATION.md — AI Freight Information & Execution Platform
 
-**Status:** Authoritative build specification. Supersedes all earlier PRD/implementation drafts. Built from two prior AI-generated specs (a feature-first PRD and a 3,300-line deep implementation plan) plus fresh technical/tooling research, read and cross-checked in full before this synthesis was written.
-
-**Business model:** Contingency-only, 15–20% of recovered dollars, configurable per customer, $0 fee on $0 recovered.
-**Primary customer:** Freight brokers/3PLs, uninsured/self-insured segment ("Flow B").
-**Product principle:** AI does the repetitive evidence-processing work; a human controls every consequential decision — negotiation, submission, anything above a configurable dollar threshold, anything with legal exposure.
-**Immediate objective:** A narrow, evidence-grounded, human-reviewed working demo — not the full platform — validated against a real broker before scope expands.
-
----
-
-## 0. What Algolyra is, and the sentence that governs every build decision
-
-Algolyra is the operating layer for freight cargo claims recovery. A shipment gets damaged, lost, short, or stolen; someone has to gather documents, figure out what happened, file a claim against the carrier within a hard deadline, track it for weeks or months, follow up, handle the response, and reconcile what actually came back. Today a broker does this by hand, badly, or not at all. Algolyra automates the document-heavy, repetitive parts of that chain and keeps a human in control of everything that involves money, negotiation, or legal risk.
-
-> **Algolyra must never optimize for "AI looks smart." It must optimize for: every claim submitted is complete, evidence-backed, correctly calculated, deadline-safe, auditable, and reviewed by a human when uncertainty or financial/legal risk is high.**
-
-Every section below should be read against that sentence. If a feature request conflicts with it, the sentence wins.
-
-### 0.1 The economic promise, stated precisely
-
-`Customer recovered dollars × contracted contingency rate = Algolyra revenue`
-
-Example: claim submitted $10,000 → recovered $7,500 → contingency rate 20% → Algolyra fee $1,500 → customer keeps $6,000 before any other cost. If recovery is $0, Algolyra's fee is $0. This is the entire pitch, and it means the product's core engineering job is making claim-processing cheap enough that pursuing even a $400 claim is worth Algolyra's time.
-
-### 0.2 Product boundary — what the system may and may not do autonomously
-
-**May:** read documents, extract facts, classify claim type, check completeness, calculate deadlines from *approved, sourced* rules, draft claim packages, prepare follow-ups, summarize carrier responses, recommend next actions, flag risk, maintain the claim record.
-
-**Must never, autonomously:** negotiate a settlement amount, make an irreversible external commitment, send a sensitive/high-value communication without approval, override a customer-defined approval threshold, or invent claim facts/evidence. The human is the source of authority for every consequential decision — enforced server-side, not just hidden behind a UI button.
+Purpose: Technical implementation plan only.
+Business/customer requirements: Defined in PRD.md. Do not repeat business strategy here except where required to implement a feature.
+Execution rule: Work strictly phase-by-phase. Do not start a later phase until the current phase's exit criteria are met.
+Primary development environment: Antigravity.
+Primary language: Python 3.12+.
+Primary backend: FastAPI.
+Primary database: PostgreSQL/Supabase.
+Initial agent framework: LangGraph.
+LLM gateway: LiteLLM.
+Optional integration layer: Composio, only where it reduces implementation time without weakening control/security.
+Durable execution: Temporal, introduced after the basic event/action loop is proven.
+Vector search: pgvector only when semantic retrieval is required; do not add it merely because it is available.
 
 ---
 
-## 1. Market context (carried forward from customer research — do not re-litigate these)
+## 0. NON-NEGOTIABLE ENGINEERING RULES
 
-- Uninsured/self-insured brokers write off real money yearly ($15-20k/broker/year data point) because pursuing claims, especially small ones, isn't worth manual time.
-- A marine claims manager's data point shapes the whole escalation model: 5-8 open claims per broker at once, 30-120 day resolution windows, claims under ~$5,000 need minimal human involvement, above that a human is required, negotiation is *always* human.
-- The single most important UX constraint in this entire product, from a skeptical prospect interview: customers disengage the instant they sense AI is handling their claims. The fix is not deception — see Section 4 — it's keeping the broker as the accountable, visible party.
-- Insured brokers have no pain (subrogation already handles it for them) — confirms the ICP stays narrow: uninsured/self-insured only.
-- No competitor prices cargo-claim recovery on pure contingency at broker/3PL/mid-market scale. FreightClaims.com (subscription) is the closest. Freehand bypasses brokers for Fortune 500 shippers. MercuryGate/BlueShip/CargoWise/TriumphPay/CTSI-Global bundle claims inside enterprise TMS at enterprise pricing. Algolyra's wedge is structural: zero adoption cost, paid only from money the broker wouldn't have recovered anyway — which only works if AI compresses processing cost enough to make small claims worth pursuing.
-
----
-
-## 2. Core questions the system must answer for every claim
-
-1. What shipment is this? 2. What went wrong? 3. Is this actually a claim? 4. What type? 5. How much money is at stake? 6. What evidence do we have? 7. What's missing? 8. What deadline applies? 9. What package should be submitted? 10. Does a human need to review it? 11. What happened after submission? 12. When do we follow up? 13. What did the carrier say? 14. What's the next action? 15. How much was recovered? 16. How much does Algolyra earn?
-
-If the system answers all sixteen, consistently, it has solved the core operational problem.
+1. Do not build six independent agents. Build one shared agent platform with six specialized workflows.
+2. The LLM never directly writes to production systems. The LLM may select a typed tool; application code validates and executes the tool.
+3. Business rules stay in deterministic code. Use the model for interpretation, classification, reasoning, and drafting; use code for arithmetic, thresholds, permissions, state validation, and financial calculations.
+4. Every material action must be auditable. Store input event, model decision, selected tool, arguments, result, actor, timestamp, and approval state.
+5. Every automated action must be idempotent. Reprocessing the same webhook/email/event must not duplicate an action.
+6. Every external call must have timeout, retry, backoff, and structured error handling.
+7. Human approval is a first-class capability. High-risk or low-confidence actions pause and request approval instead of guessing.
+8. No silent data overwrite. Important fields retain provenance and conflicts are explicitly represented.
+9. No fake confidence. If evidence is insufficient, the system must say so and escalate.
+10. Build the smallest working slice first. Do not add an enterprise feature because a framework supports it.
 
 ---
 
-## 3. Product principles (non-negotiable, enforced in architecture, not just policy)
+## 1. REFERENCE GITHUB REPOSITORIES
 
-1. **Evidence before language.** No fact enters a claim unless it's traceable to a source document.
-2. **Deterministic rules before probabilistic AI.** Deadlines, fees, and eligibility are calculated by code, not inferred by a model.
-3. **Every important AI conclusion needs provenance** — document, page, region/excerpt.
-4. **Human approval is a first-class state**, not a UI checkbox — see the state machine in Section 9.
-5. **Recoveries are financial events, not a single field.** Multiple partial payments are normal; model them as events.
-6. **Human-facing and customer-facing communication are different surfaces.** What a claims operator sees internally (AI confidence, flags) is never what a shipper or carrier sees.
-7. **Build for evidence-backed automation, not novelty automation.** If a feature doesn't reduce missing-evidence, missed-deadline, or bad-classification failure modes, it's not Phase 0-2 work.
+These repositories are implementation references/components. Prefer installing the libraries from their official packages for the product. Clone an example repository only when it is specifically needed for study or adaptation.
+
+### 1.1 LangGraph — PRIMARY AGENT ORCHESTRATION
+
+Repository: https://github.com/langchain-ai/langgraph
+
+Use for:
+● stateful agent workflows
+● branching decisions
+● tool calling
+● controlled multi-step execution
+● checkpoint/persistence patterns
+● human-in-the-loop flows
+● long-running workflow logic
+
+Why it is selected:
+LangGraph is explicitly positioned as a low-level orchestration framework for stateful and long-running agents and supports graph-based control over agent execution.
+
+Implementation instruction:
+● Install the library; do not fork the framework.
+● Study the main repository and official examples before implementing the first workflow.
+● Build the application graph ourselves so the business logic stays under our control.
+
+### 1.2 LangGraph Example — REFERENCE DEPLOYMENT PATTERN
+
+Repository: https://github.com/langchain-ai/langgraph-example
+
+Use for:
+● project layout reference
+● basic LangGraph deployment patterns
+● HTTP-serving patterns
+● persistence concepts
+
+Do not use as the product's codebase. Use it as a reference only.
+
+### 1.3 LiteLLM — MODEL GATEWAY / COST CONTROL
+
+Repository: https://github.com/BerriAI/litellm
+
+Use for:
+● one application interface across model providers
+● routing between cheap and stronger models
+● spend tracking
+● retries/fallbacks
+● provider switching
+
+LiteLLM provides an OpenAI-compatible interface to 100+ model providers and includes gateway features such as spend tracking, guardrails and load balancing.
+
+Implementation instruction:
+● All LLM calls go through a thin internal llm_gateway wrapper.
+● The application must not call provider SDKs from business logic.
+● Keep model selection in configuration/policy, not scattered through the code.
+
+### 1.4 Temporal Python SDK — DURABLE EXECUTION
+
+Repository: https://github.com/temporalio/sdk-python
+
+Use for:
+● long-running workflows
+● retries
+● timers
+● durable execution
+● workflow recovery after process/server failure
+● human approval pauses/resumes
+
+Temporal is designed for distributed, scalable and durable execution of asynchronous, long-running business logic.
+
+Implementation instruction:
+● Do not make Temporal a prerequisite for Phase 1.
+● Introduce Temporal once the core agent loop is proven and real background workflows require durable execution.
+
+### 1.5 Composio — OPTIONAL TOOL/INTEGRATION LAYER
+
+Repository: https://github.com/ComposioHQ/composio
+
+Use selectively for:
+● external SaaS tool connections
+● authentication helpers
+● prebuilt integrations
+● MCP/toolset patterns
+
+Composio currently provides large numbers of toolkits and agent-oriented integration capabilities.
+
+Implementation instruction:
+● Do not make Composio a hard dependency for core financial logic.
+● For critical operations (billing mutations, dispute status, permission checks), prefer our own typed internal tools.
+● Use Composio where it materially reduces integration effort and the action can be safely wrapped/validated.
+
+### 1.6 PydanticAI — OPTIONAL REFERENCE FOR STRICT TOOLING / VALIDATION
+
+Repository: https://github.com/pydantic/pydantic-ai
+
+Use for:
+● typed agent interfaces
+● strict tool definitions
+● structured outputs
+● toolsets
+● validation patterns
+● evaluation patterns
+
+PydanticAI provides typed tools/toolsets and can integrate with durable execution systems such as Temporal.
+
+Implementation instruction:
+● Do not introduce PydanticAI alongside LangGraph in Phase 1 unless there is a concrete benefit.
+● Borrow its typed-tool and validation design principles even if LangGraph remains the orchestration layer.
+
+### 1.7 pgvector — OPTIONAL SEMANTIC RETRIEVAL
+
+Repository: https://github.com/pgvector/pgvector
+
+Use for:
+● semantic search over documents/messages
+● finding similar prior emails/disputes
+● retrieving relevant contract/rate documents
+● future long-term memory
+
+pgvector adds vector similarity search directly to PostgreSQL and supports exact and approximate nearest-neighbor search.
+
+Implementation instruction:
+● Enable only after keyword/relational retrieval is insufficient.
+● Do not put primary shipment truth in vectors; canonical truth remains relational.
 
 ---
 
-## 4. Non-negotiable constraints
-
-1. **No autonomous negotiation, ever** — AI drafts, a human sends.
-2. **No autonomous action above a per-customer dollar threshold** (default $5,000, configurable).
-3. **Nothing constituting legal advice or sign-off ships without human review.** Corollary (important correction from technical review): Algolyra may identify *factual indicators* relevant to potential legal/contractual issues (e.g., "packaging documentation does not show packaging condition") — it must never state a legal conclusion ("carrier is liable under Carmack"). This applies directly to how the drafting engine talks about Carmack Amendment exclusions.
-4. **Broker remains the accountable sender and decision-maker.** Reframed from "AI must be invisible": the hard rule is Algolyra must never falsely represent an AI-generated communication as human-authored where disclosure is legally required, and the architecture must not be built around deceptive identity behavior. In practice, broker-first branding/tone stays as validated by research — but the mechanism is accountability, not deception.
-5. **AI-generated claims must be grounded exclusively in evidence.** If a fact isn't present in a document, the system outputs `UNKNOWN / NOT PROVIDED`, never a plausible guess. No invented damage, dates, shipment numbers, values, signatures, carrier admissions, inspection findings, packaging/delivery condition, or legal conclusions.
-6. **Every AI action is logged richly** — model, model version, prompt version, input references, output, confidence, human modification, final human decision. This is both the trust mechanism and the seed data for Phase 5 intelligence.
-
----
-
-## 5. System architecture
+## 2. TARGET TECHNICAL ARCHITECTURE
 
 ```
-Web App (broker workspace)
-   ↓
-API / Backend (auth, authorization, routing)
-   ↓
-Claim Service (owns the state machine, orchestrates everything below)
-   ↓
-Document Processing Pipeline
-   ├── Object Storage (signed URLs, no public access)
-   ├── OCR/Vision Provider (abstracted — Section 8)
-   ├── Document Classification
-   └── Structured Extraction (+ per-field confidence + provenance)
-   ↓
-Claim Intelligence Layer
-   ├── Claim Classification
-   ├── Rules Engine (sourced, versioned — Section 7.9)
-   ├── Evidence/Completeness Checker (+ contradiction detection)
-   ├── Deadline Engine (deterministic, never LLM arithmetic)
-   └── Readiness Engine (score + decision explanation)
-   ↓
-Human Review Queue → Approval (server-side enforced)
-   ↓
-Claim Submission (hard blockers enforced here)
-   ↓
-Claim Tracking (status/timeline/events, follow-up engine)
-   ↓
-Recovery (carrier-response parsing, appeal loop, negotiation support)
-   ↓
-Contingency Billing (fee calc, invoicing, audit trail)
+EXTERNAL EVENTS
+|
++------------+-------------+
+|                          |
+Gmail/365             Webhooks/APIs
+|                          |
++------------+-------------+
+|
+FastAPI Ingestion
+|
+Idempotency + Queue
+|
+Canonical Event Log
+|
+Entity / Shipment Resolver
+|
+Source-of-Truth Layer
+|
+Rules + Evidence Engine
+|
+LangGraph Workflow
+|
++-----------+-----------+
+|                       |
+Deterministic Tool    LLM Call
+|                       |
++-----------+-----------+
+|
+Policy / Permission
+|
+Execute External Action
+|
+Verify External Result
+|
+Persist Audit Evidence
+|
+Schedule Next Follow-up
 ```
 
-**Recommended shape for a solo founder: a modular monolith plus async jobs, not microservices.**
-
-```
-Web App → API/Backend → PostgreSQL + Object Storage → Job/Workflow Queue → 
-   Document Processing workers | AI/Rules workers | Notification workers → LLM/VLM/OCR
-```
-
-Keep code modules logically separated even inside one process:
-
-```
-apps/{web, api}
-packages/{domain, claims, documents, rules, ai, workflows, billing, communications, analytics, auth, storage, audit}
-workers/{document_worker, extraction_worker, claim_worker, notification_worker}
-```
-
-Python is the strongest backend choice given the document-processing and AI ecosystem, but the exact language should follow founder speed over "best practice."
-
-### 5.1 AI architecture — a set of narrow functions, not one giant agent
-
-- **Document extraction worker** — document in, typed facts + provenance out.
-- **Claim classifier** — normalized context in, claim type + confidence + evidence out.
-- **Completeness assistant** — claim + requirements in, missing/unknown list out.
-- **Drafting worker** — verified facts + template in, claim package draft out.
-- **Response parser** — carrier communication in, structured response out.
-- **Follow-up drafting worker** — claim state + correspondence in, follow-up draft out.
-- **Risk/escalation evaluator** — claim + policy in, required approval path out (thresholds are deterministic; AI only supplements risk interpretation, never sets the threshold).
-
-That's six functions. Resist adding more because they sound advanced — see Section 8's "what not to add early."
+Primary services:
+/apps/api              FastAPI application
+/apps/worker           background worker(s)
+/apps/agent            LangGraph workflows
+/packages/tools        typed action tools
+/packages/domain       domain models + validation
+/packages/rules        deterministic audit/risk rules
+/packages/llm          LiteLLM wrapper + routing policy
+/packages/connectors   Gmail/TMS/accounting/carrier adapters
+/packages/storage      repositories + document storage
+/packages/audit        event/audit ledger
+/packages/evals        test datasets + agent evaluations
 
 ---
 
-## 6. AI confidence & human escalation framework
+## 3. PHASED IMPLEMENTATION PLAN
 
-Every AI task gets its **own configurable confidence threshold** — not one global number. Starting policy (tune per task, don't hardcode as final):
+### PHASE 1 — FOUNDATION + INBOX AGENT VERTICAL SLICE
 
-| Confidence | Behavior |
-|---|---|
-| ≥ 95% | Automatic processing |
-| 90–95% | Process, flag for review |
-| 70–90% | Human verification required before proceeding |
-| < 70% | AI cannot decide — human determines the result |
+Goal: Build one complete end-to-end path: email arrives → system identifies shipment → agent reasons → permitted action occurs → result is verified and logged.
 
-Tasks needing independent thresholds: carrier extraction, shipment-number extraction, claim classification, damage classification, amount extraction, document classification. Your product's biggest risk isn't "AI doesn't work" — it's "AI confidently makes the wrong claim decision." This framework is what makes that risk manageable.
+Do not implement all six capabilities yet.
 
----
+#### Phase 1.1 — Repository Bootstrap
 
-## 7. Full feature catalog
+GitHub references:
+● LangGraph: https://github.com/langchain-ai/langgraph
+● LangGraph example: https://github.com/langchain-ai/langgraph-example
+● LiteLLM: https://github.com/BerriAI/litellm
 
-### 7.1 Organization/account management
-Multi-tenant organizations, users, roles, permissions, customer configuration, billing configuration, approval thresholds, communication preferences. Initial roles: **Admin** (full control), **Claims Manager** (create/review/approve/submit/manage), **Claims Operator** (prepare claims, cannot approve high-value), **Finance** (view recoveries/fees/invoices), **Read-only**. Later: **Senior Approver** (required above threshold).
+Tasks:
+1. Create mono-repo or clearly separated application repository.
+2. Configure Python 3.12+.
+3. Add package manager (uv recommended) and lockfile.
+4. Create FastAPI service.
+5. Create worker entrypoint.
+6. Add LangGraph dependency.
+7. Add LiteLLM dependency.
+8. Add Pydantic settings/configuration.
+9. Add structured logging.
+10. Add .env.example; never commit secrets.
+11. Add Dockerfile(s) for local/production parity.
+12. Add GitHub Actions for lint, unit tests and type checks.
+13. Create /health and /ready endpoints.
 
-### 7.2 Shipment management
-Each claim links to a shipment record: shipment ID, customer reference, carrier, broker/3PL, shipper, consignee, origin, destination, pickup/delivery dates, BOL number, PRO/reference number, declared value, currency, commodity, quantity, weight, source system, imported timestamp. The structured shipment record is authoritative after validation — never treat raw LLM text as source of truth.
+Exit criteria:
+● Fresh clone installs successfully.
+● API starts.
+● Worker starts.
+● CI passes.
+● No secrets are committed.
 
-### 7.3 Document management
-Initial types: BOL, POD, invoice, damage photos, inspection report, carrier correspondence. Later: rate confirmation, delivery exception notices, warehouse records, packing lists, proof of value, claim forms, carrier portal exports. Each document: ID, claim ID, shipment ID, type, filename, MIME type, storage location, hash/checksum, uploader, upload time, extraction status, parser version, page count, sensitivity classification. Use content-addressable storage/strong checksums to prevent duplicate processing.
+#### Phase 1.2 — Database + Core Data Model
 
-### 7.4 AI document extraction
-Returns typed JSON with per-field evidence, not free text:
-```json
-{
-  "document_type": "POD",
-  "shipment_reference": {"value": "847293", "evidence": [{"page": 1, "text": "PRO: 847293"}]},
-  "delivery_date": {"value": "2026-08-03", "evidence": [{"page": 1, "text": "Delivered 08/03/2026"}]},
-  "damage_noted": {"value": true, "evidence": [{"page": 1, "text": "3 cartons damaged"}]}
-}
-```
-Schema defined centrally, validated with Pydantic (or equivalent) before any database write.
+Tasks:
+1. Create PostgreSQL/Supabase project.
+2. Implement tables for:
+   ○ organizations
+   ○ users
+   ○ inbox_connections
+   ○ shipments
+   ○ shipment_events
+   ○ documents
+   ○ messages
+   ○ agent_runs
+   ○ tool_calls
+   ○ approvals
+   ○ exceptions
+   ○ audit_log
+3. Add organization scoping to all customer data.
+4. Add UUID primary keys.
+5. Add created/updated timestamps.
+6. Add unique constraints required for idempotency.
+7. Add indexes for:
+   ○ shipment ID
+   ○ external message ID
+   ○ external invoice ID
+   ○ carrier reference
+   ○ email thread ID
+8. Create repository/service layer; do not query the database directly from agent nodes.
 
-### 7.5 Image/damage evidence processing
-Photos aren't ordinary documents: store original → generate safe preview → normalize orientation → run vision model → extract observations → **never convert a visual inference into a stated fact without marking it as a model observation** → require human confirmation for consequential damage statements below the confidence threshold. Example: `AI observation: possible physical damage visible on outer packaging. Confidence: 0.86. Human confirmation required before use in an external claim.`
+Exit criteria:
+● Migrations run from a clean database.
+● CRUD tests pass.
+● Duplicate event constraints work.
 
-### 7.6 Shipment-document matching
-Match by (in order): exact shipment/reference number → BOL/PRO number → carrier name → dates → origin/destination → invoice number → fuzzy semantic matching only as a last resort. Every match gets a confidence state: confirmed / probable / ambiguous / unresolved. Ambiguous documents go to human review — never silently attach to the wrong claim.
+#### Phase 1.3 — Event Ingestion Layer
 
-### 7.7 Claim classification
-Classes: damage, shortage, loss, theft (separate class: demurrage/detention — different workflow). Output includes confidence + evidence. Low-confidence classification never silently enters the submission workflow.
+Tasks:
+1. Create inbound event endpoint.
+2. Normalize external event payloads to an internal event schema.
+3. Assign event_id.
+4. Enforce idempotency.
+5. Persist raw payload metadata.
+6. Push normalized event to background processing.
+7. Record processing status:
+   ○ received
+   ○ queued
+   ○ processing
+   ○ completed
+   ○ failed
+8. Add retry-safe processing.
 
-### 7.8 Claim eligibility/completeness engine
-Answers "can this claim safely proceed?" Checks: shipment identified, carrier identified, claim type known, amount supported, required documents present, mandatory dates present, deadline known, customer-specific rules satisfied, approval threshold satisfied. Output states: `READY` / `BLOCKED (missing: ...)` / `ESCALATED (reason: ...)`.
+Exit criteria:
+● Same event sent twice creates one logical event/action.
+● Failed processing can be retried.
+● Raw event metadata is preserved.
 
-### 7.9 Rules engine (sourced and versioned)
-Do not embed rules in prompts. Structured `CarrierRuleSet` per carrier: rule version, effective-from/to, claim types covered, filing window, required documents, amount/variance thresholds, submission channel, contact details, special notes, **source citation/reference, verification status**. Every important rule needs source URL/document, retrieved date, reviewer, confidence, last-verified date — because rules change, and an unverified stale rule → wrong deadline → real financial loss. The platform never presents legal interpretations as legal advice; material legal conclusions require customer policy or qualified legal review.
+#### Phase 1.4 — Gmail/Email Connector
 
-### 7.10 Deadline engine
-Inputs: event date, carrier, claim type, rule version, customer policy. Outputs: deadline date, time remaining, urgency, status, source rule. **Never calculate deadlines with LLM-generated arithmetic** — the LLM may identify candidate dates/rules; a deterministic service performs the final calculation.
+Tasks:
+1. Implement OAuth connection for a test mailbox.
+2. Retrieve message metadata and body.
+3. Retrieve attachments.
+4. Normalize sender/recipient/thread/message IDs.
+5. Store message metadata and document references.
+6. Implement outbound send-email action.
+7. Implement thread/reply lookup.
+8. Implement connector-level rate-limit handling.
 
-### 7.11 Claim amount engine
-`proposed_amount = evidence-backed calculation` from invoice value, affected quantity, unit value, repair/salvage cost, customer policy, carrier-specific constraints. Every externally displayed number carries a provenance trail (e.g., "$8,000 — supported by: invoice $20,000 total × 40% affected quantity, confirmed by damage evidence"). Review the exact calculation logic per claim class before treating it as automated financial logic.
+Agent-facing tools:
+● search_emails
+● get_email
+● get_attachment
+● send_email
+● reply_to_thread
+● mark_email_processed
 
-### 7.12 Claim package generator
-Outputs: cover summary, claim form fields, factual narrative, chronology, amount claimed, evidence checklist, attachments, carrier/reference details. Hard requirements: no unsupported facts, no invented dates/carrier statements/legal conclusions, consistent numbers and shipment identifiers across all documents, provenance preserved internally.
+Exit criteria:
+● Test mailbox can be connected.
+● New email enters the system.
+● Agent can safely reply through a typed tool.
 
-### 7.13 Claim readiness score
-Deterministic + AI-assisted score from: evidence completeness, field completeness, deadline safety, claim-type confidence, amount support, carrier rule confidence, human approval status. Always paired with a **decision explanation** (why not 100%), not a bare number:
-```
-Readiness: 78%
-✓ BOL found  ✓ POD found  ✓ Invoice found  ✓ Amount verified
-✗ Damage notation missing from POD  ✗ Inspection report missing
-```
-This score is an internal workflow aid, not a claim-acceptance prediction, until validated against real outcome data (Section 12).
+#### Phase 1.5 — Shipment Resolver
 
-### 7.14 Human review UI — one of the highest-priority screens in the product
-Layout: document viewer (left), structured claim fields (center), AI findings/missing evidence/deadline/risk/draft communication (right). Actions: approve, edit, reject, request document, escalate, save draft. Every edit records original value, final value, actor, timestamp, reason — this becomes training/evaluation data.
+Tasks:
+1. Extract candidate identifiers from email:
+   ○ load ID
+   ○ shipment ID
+   ○ PRO number
+   ○ invoice number
+   ○ BOL number
+2. Match candidates against database.
+3. Score deterministic matches.
+4. Only use LLM reasoning when deterministic matching fails/ambiguous.
+5. Return:
+   ○ matched entity
+   ○ match type
+   ○ evidence
+   ○ confidence
+6. Never choose arbitrarily when two shipments are plausible.
 
-### 7.15 Follow-up engine
-A core feature, not a notification add-on. Per claim: next/previous follow-up date, response SLA/policy, outstanding request, owner, escalation level. AI drafts first follow-up, overdue follow-up, document-request response, settlement response draft, internal escalation summary — approval rules configurable.
+Exit criteria:
+● Known test emails resolve to the correct shipment.
+● Ambiguous emails create a review task instead of a wrong update.
 
-### 7.16 Carrier-response intelligence
-Extract: acceptance/rejection/partial acceptance, offer amount, requested documents, stated rejection reason, deadline/request date, reference number, next action → structured response object with `requires_human_review: true` wherever ambiguous. Never let AI convert ambiguous language into an irreversible financial decision.
+#### Phase 1.6 — First LangGraph Workflow
 
-### 7.17 Negotiation support (assistant, not autonomous negotiator)
-AI can: summarize carrier position, compare offer vs. requested amount, identify missing arguments/evidence, prepare a response draft, surface prior claim history and relevant policy, flag high-value/high-risk cases. **Final response is always human-sent.**
+Tasks:
+1. Define graph state.
+2. Nodes:
+   ○ ingest
+   ○ resolve_entity
+   ○ load_context
+   ○ classify_intent
+   ○ propose_action
+   ○ permission_check
+   ○ execute_tool
+   ○ verify_result
+   ○ audit
+3. Add checkpointing/persistence appropriate for MVP.
+4. Add explicit terminal outcomes:
+   ○ completed
+   ○ needs_human
+   ○ failed
+5. Keep the graph deterministic around tool execution.
 
-### 7.18 Recovery management
-Support partial payment, multiple payments, full payment, rejected recovery, disputed payment, corrected/reversed payment, currency conversion where needed. Model as **events**, not a single field:
-```
-RecoveryEvent #1: amount=4000, received_at=..., source=carrier
-RecoveryEvent #2: amount=3000, received_at=..., source=carrier
-```
-Current recovered amount is always derived from events, never stored as a mutable single value.
+#### Phase 1.7 — Tool Registry + Permissions
 
-### 7.19 Contingency billing
-Per-customer config: contingency rate, currency, invoice timing, tax handling, billing contact, payment terms. `fee = eligible_recovered_amount × contingency_rate`. Every invoice line references customer, claim, recovery event(s), recovered amount, rate, fee, invoice ID — fully auditable.
+Initial tools:
+● find_shipment
+● get_shipment
+● update_shipment
+● attach_document
+● create_task
+● send_email
+● reply_to_thread
+● create_exception
 
-### 7.20 Analytics
-**Recovery:** total claimed, total recovered, recovery rate, average recovery time, pending recovery. **Operations:** open claims, claims nearing deadline, claims missing documents, overdue follow-ups, claims awaiting approval. **Carrier intelligence:** claim count, recovery rate, average response time, rejection reasons, average settlement ratio — carefully permissioned so one customer's data never leaks to another.
+Each tool must define:
+● name
+● purpose
+● input schema
+● output schema
+● required permission
+● idempotency key
+● audit metadata
+● external side effects
 
----
+#### Phase 1.8 — Inbox Action Agent v0
 
-## 8. Recommended GitHub repositories, by layer (researched and current)
+Implement only 3 high-confidence workflows:
 
-*Every open-source dependency below is a replaceable implementation detail — product interfaces must not depend directly on a specific OCR/LLM/auth vendor (Section 5's provider abstraction). Verify current license terms before production use.*
+A. Pickup confirmation
+● parse carrier message
+● resolve shipment
+● update pickup status/time
+● store evidence
+● optionally notify customer
 
-**Document conversion / OCR**
-- **[docling-project/docling](https://github.com/docling-project/docling)** — PDF and multi-format conversion, advanced PDF structure parsing, OCR support, unified document representation, runs locally. Ships an MCP server, meaning an agentic coding tool (Antigravity) can call it directly as a tool. Best fit for Phase 1+ structured parsing.
-- **[PaddlePaddle/PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)** — 76,000+ stars, strong on tables and multilingual documents, ships PP-Structure for layout/table detection (relevant since BOLs are table-heavy). Real GPU/dependency setup overhead — don't add until direct LLM-vision extraction (Phase 0/1 default) proves insufficient.
-- **Tesseract** (`tesseract-ocr/tesseract`) — simplest fallback, 73,000+ stars, weak on layout/tables — not recommended as primary given BOL/POD table structure.
+B. ETA update
+● identify shipment
+● update ETA
+● preserve prior ETA as history
+● optionally notify customer
 
-**Multi-tenant SaaS foundation (auth, orgs, billing) — highest-leverage repo in this whole list**
-- **[better-auth/better-auth](https://github.com/better-auth/better-auth)** — MIT-licensed, framework-agnostic TypeScript auth, 13,000+ stars, 100K+ weekly downloads. Built-in: organizations/multi-tenancy, teams, roles, invitations, access control, passkeys, 2FA, magic links, API keys, JWTs. This maps almost directly onto the `organizations`/`users`/roles schema in Section 10 — adopt at the start of Phase 2, not Phase 0.
-- **[ixartz/SaaS-Boilerplate](https://github.com/ixartz/SaaS-Boilerplate)** — free Next.js starter bundling multi-tenancy, RBAC, auth, and Stripe billing in one repo. Building this stack from scratch costs real weeks of solo-founder time; cloning it when multi-tenancy/billing actually become necessary (Phase 2) is the pragmatic move.
+C. Missing-information request
+● identify missing required field
+● send a standardized request to the relevant sender
+● create follow-up timer/task
 
-**Durable workflows / orchestration**
-- **[langchain-ai/langgraph](https://github.com/langchain-ai/langgraph)** — durable, stateful execution with human-in-the-loop interruption/checkpointing — maps well to claims that stay open for weeks/months and need a human-approval pause built into the workflow itself. Adopt only once durable long-running state is a real requirement (Phase 2+), not because it's an "agent framework."
-- **[pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai)** — type-safe AI workflows, structured/validated outputs, model-provider abstraction, evaluation and human-approval hooks, multi-provider support. Directly implements the AI provider abstraction and structured-output validation this spec requires (Sections 4, 7.4).
+#### Phase 1.9 — Auditability + Evaluation
 
-**Retrieval / semantic search**
-- **[pgvector/pgvector](https://github.com/pgvector/pgvector)** — adds exact and approximate nearest-neighbor search inside Postgres. Sufficient for early similar-claim retrieval and carrier-response retrieval without standing up a separate vector database.
+Create a test dataset of at least:
+● 50 normal emails
+● 20 ambiguous emails
+● 20 irrelevant emails
+● 20 emails with conflicting information
 
-**LLM evaluation (this is what makes AI reliability testable — do not skip)**
-- **[confident-ai/deepeval](https://github.com/confident-ai/deepeval)** — the closest thing to pytest for LLM outputs; 14+ scored, self-explaining metrics, native Pytest integration, synthetic dataset generation from your own document set. Best fit for gating extraction/classification/drafting quality in CI (Section 15).
-- **[explodinggradients/ragas](https://github.com/explodinggradients/ragas)** — reference-free metrics (faithfulness, answer relevancy) plus retrieval metrics — useful if/when historical-claim retrieval (Phase 5) is built.
-- **[promptfoo/promptfoo](https://github.com/promptfoo/promptfoo)** — CLI-first, zero-cloud-dependency, YAML-driven, strong red-teaming/adversarial suite (500+ attack vectors) — useful for testing that the drafting engine can't be prompted into inventing facts or making legal conclusions (Section 4).
-- **[langfuse/langfuse](https://github.com/langfuse/langfuse)** — open-source, self-hostable LLM observability/tracing with a managed-cloud option if self-hosting overhead becomes a problem later. Good fit for the AI audit log requirements in Section 14.
+Measure:
+● correct shipment match rate
+● correct action rate
+● false-action rate
+● human escalation rate
+● duplicate-action rate
 
-**EDI/X12 (Phase 4+ only — do not integrate speculatively)**
-- **nerdocs/pydifact** (EDIFACT) and **git-albertomarin/badX12** (ANSI ASC X12) — real, maintained, free Python parsers. Evaluate only once a specific pilot customer's TMS requires EDI ingestion.
-
-**What NOT to add early:** five agent frameworks, three vector databases, multiple orchestration engines, or a large event-bus architecture just to look advanced. There is no meaningful open-source shortcut for TMS integration specifically — that's closed, proprietary, vendor-by-vendor work, scoped only when a real pilot customer needs it. The strongest early architecture is the smallest one that reliably processes a claim end to end.
-
----
-
-## 9. Claim state machine
-
-```
-DRAFT → DOCUMENTS_PROCESSING → NEEDS_INFORMATION → CLASSIFIED → READY_FOR_REVIEW
-   → HUMAN_REVIEW → APPROVED → SUBMITTED → AWAITING_RESPONSE → FOLLOW_UP_DUE
-   → CARRIER_RESPONDED → NEGOTIATION → APPROVED_FOR_PAYMENT
-   → PARTIALLY_RECOVERED / RECOVERED / REJECTED → CLOSED
-   (ESCALATED can branch in from most states)
-```
-
-No direct `DRAFT → RECOVERED` or any transition that skips the required workflow events. **Critical rule: AI cannot trigger `→ SUBMITTED`.** This is a backend permission check, not a UI restriction:
-```python
-if claim.requires_approval and not claim.approved:
-    block_submission()
-```
-Every transition is recorded (from_status, to_status, actor [ai/human], user_id, timestamp, reason) — this is what makes the human-control requirement in Section 4 real rather than cosmetic.
-
----
-
-## 10. Data model
-
-```
-organizations
-  id, name, type (broker|3pl|shipper|other), status, timezone, currency, created_at, updated_at
-
-users
-  id, organization_id, name, email, role, status, created_at, last_login_at
-
-customer_policies
-  id, organization_id, high_value_threshold, approval_policy_version,
-  contingency_rate, communication_policy, follow_up_policy, timezone, effective_at
-
-carriers
-  id, canonical_name, aliases, mc_number/identifiers, contact_channels, active
-
-carrier_rule_sets
-  id, carrier_id, version, effective_from, effective_to, rule_status,
-  source_reference, verified_at, verified_by
-
-carrier_claim_rules   -- child of carrier_rule_sets
-  carrier_rule_set_id, claim_type, filing_window_type, filing_window_value,
-  filing_window_unit, required_document_type, submission_channel, special_rule_json
-
-shipments
-  id, organization_id, external_reference, bol_number, carrier_id,
-  shipper_name, consignee_name, origin, destination, pickup_at, delivery_at,
-  declared_value, currency, commodity, quantity, weight, created_at
-
-claims
-  id, organization_id, shipment_id, claim_type, status, lifecycle_version,
-  claimed_amount, currency, approved_claim_amount, deadline_at,
-  human_threshold_triggered, reimbursement_mode (pure_recovery|reimbursement_after_payout),
-  owner_user_id, created_at, submitted_at, closed_at
-
-documents
-  id, organization_id, claim_id, shipment_id, document_type, filename, mime_type,
-  object_key, sha256, page_count, extraction_status, parser_version,
-  uploaded_by, created_at
-
-document_evidence
-  id, document_id, page_number, bbox_json, source_text, field_name,
-  normalized_value_json, extraction_method, model_version, confidence
-
-claim_facts   -- provenance-first fact table; do not write LLM results directly onto claims
-  id, claim_id, field_name, value_json, source_document_id, source_location,
-  confidence, verification_status, model_version, created_at
-
-claim_requirements
-  id, claim_id, requirement_type, description, source_rule_id,
-  status (met|missing|unknown|waived), evidence_document_id
-
-claim_submissions
-  id, claim_id, submission_channel, submitted_at, external_reference,
-  payload_hash, status, submitted_by
-
-communications
-  id, claim_id, channel, direction, sender, recipient, subject, body,
-  draft_status, approved_by, sent_at, source_document_id
-
-tasks
-  id, claim_id, type, owner_user_id, due_at, status, priority, created_by, completed_at
-
-recovery_events
-  id, claim_id, amount, currency, received_at, payment_reference, payer,
-  evidence_document_id, status, created_by
-
-fee_events
-  id, claim_id, recovery_event_id, eligible_amount, contingency_rate,
-  fee_amount, currency, status
-
-invoices
-  id, organization_id, invoice_number, status, issue_date, due_date,
-  currency, subtotal, tax, total
-
-audit_events
-  id, organization_id, actor_type, actor_id, entity_type, entity_id,
-  action, before_json, after_json, reason, created_at
-```
+PHASE 1 EXIT CRITERIA:
+● End-to-end inbox vertical slice works.
+● Actions are actually executed, not merely suggested.
+● Duplicate events are safe.
+● High-risk/ambiguous cases escalate.
+● Audit logs show every action.
+● Automated tests pass.
 
 ---
 
-## 11. Acceptance-rate optimization system
+### PHASE 2 — SOURCE-OF-TRUTH + DOCUMENT RECONCILIATION
 
-The business objective is not "file more claims" — it's **increase valid claim acceptance and recovery**.
+Goal: Make shipment truth the shared information layer used by all later agents.
 
-- **Pre-submission quality gate:** is claim type confident? Carrier known? Shipment known? Amount supported? Required documents present? Deadline safe? Approval policy passed? No factual inconsistencies? Any "no" → block or escalate.
-- **Evidence completeness matrix:** `claim type + carrier + policy → required evidence set → match against uploaded evidence → PASS/MISSING/UNKNOWN`.
-- **Contradiction detection:** BOL shipment number ≠ POD shipment number; invoice amount ≠ claim amount; delivery date conflicts with carrier response; one document says "shortage," another says "damage" — always surfaced to a human, never silently resolved.
-- **Claim narrative grounding:** every factual sentence in the generated claim traces internally to evidence (sentence-level citations: `Sentence 1 → BOL p1`, etc.).
-- **Rejection reason learning:** every rejection stored as structured data against a fixed taxonomy (missing document, late filing, insufficient proof of damage, amount unsupported, carrier denies liability, improper claimant, duplicate claim, policy/contract issue, other). Free-text carrier reasons are never treated as ground truth without human review.
-- **Outcome feedback loop:** `claim submitted → carrier response → accepted/partial/rejected → recovery outcome → reason code → dataset → evaluation → workflow/prompt/model improvement`. This loop is the long-term data advantage — but it only starts compounding once the logging (Section 4, item 6) has been running for months.
+#### Phase 2.1 — Canonical Shipment Model
 
-**Acceptance prediction is explicitly Phase 5, not v1.** Do not set an internal 80-90% target as a requirement now — there isn't enough Algolyra outcome data yet to justify it. Instead measure, from day one: claims submitted/accepted/partially-settled/denied/appealed, $ recovered vs. $ claimed, acceptance rate, recovery rate, appeal success rate, average recovery time and %. Set an internal target only once real data justifies one — that's the scientifically defensible version of the same ambition. Once real labeled outcomes exist, a model estimating `P(accepted | claim features, evidence, carrier, amount, timing, history)` can be built — but it must never decide the outcome autonomously, only recommend ("needs additional evidence" / "high rejection risk, senior review recommended"), and must be evaluated for calibration, not just accuracy.
+Add structured entities for:
+● shipment parties
+● locations
+● dates/times
+● freight details
+● pricing
+● carrier
+● documents
+● billing references
+● operational events
 
----
+Implement field-level provenance:
+● source
+● source ID
+● timestamp
+● confidence
+● authority
+● writer
 
-## 12. Human-in-the-loop design
+#### Phase 2.2 — Document Processing Pipeline
 
-**Approval levels:**
-- **Level 0 — Routine:** low value, complete evidence, low ambiguity → human reviews before external submission.
-- **Level 1 — Elevated:** medium value or moderate uncertainty → experienced claims operator reviews.
-- **Level 2 — High value:** above customer-configured threshold → senior approver required.
-- **Level 3 — Exceptional:** potential legal dispute, major financial exposure, severe ambiguity, sensitive communication → manual handling required.
+Implement document intake for:
+● PDF
+● image
+● CSV/XLSX where required
+● email attachments
 
-Workflow enforcement is server-side (Section 9's code example), never just a hidden frontend button. Every human edit records the AI draft, the human's final version, the diff, the rejection reason if any, and approval duration — this is valuable future training/evaluation data, and it's also how you'll eventually know whether the AI is actually getting better.
+Pipeline:
+Document received
+→ file validation
+→ text/table extraction
+→ document classification
+→ field normalization
+→ validation
+→ provenance storage
 
----
+LLMs may interpret ambiguous text; deterministic parsers handle structured formats first.
 
-## 13. Failure handling, idempotency, and reliability
+#### Phase 2.3 — Source Authority Rules
 
-**Explicit failure states required for:** OCR/vision failure, AI call timeout, corrupted PDF, invalid JSON from a model, unrecognized carrier, low extraction confidence, duplicate document upload, an email with 20 attachments, an uncalculable deadline, an unknown carrier rule. States: `processing_failed`, `needs_human_review`, `unsupported_document`, `unknown_carrier`, `unknown_rule`, `invalid_extraction`. **Never silently continue.**
+Define field-specific precedence, for example:
 
-**Idempotency:** file fingerprinting/hashing (the `sha256` field on `documents`) prevents the same POD being processed twice or the same shipment producing two separate claims.
+invoice amount:
+contract/rate agreement > invoice
 
-**Reliability, given claims stay open for months:** idempotent jobs, retry with exponential backoff, dead-letter queue, workflow checkpoints, resumable processing, unique event IDs, transactional state changes, explicit timeouts, alerting for stuck claims, reconciliation jobs. A duplicate job must never generate a duplicate invoice or duplicate submission.
+shipment weight:
+verified reweigh > BOL > other communication
 
----
+pickup status:
+verified carrier event > email statement > manual note
 
-## 14. Security and privacy
+These are examples only; exact precedence must be configurable per customer.
 
-Minimum controls from **Phase 0**, not Phase 2: tenant isolation, encrypted transport, encrypted object storage, encrypted database backups, role-based access control, server-side authorization checks, audit logs, secure secret management, signed/temporary file URLs (no public document URLs), virus/malware scanning for uploads, file-type validation, upload size limits, retention/deletion policy, backup/restore procedure. Never put customer documents or full claim/email bodies into logs by default; redact sensitive data from telemetry where possible.
+#### Phase 2.4 — Conflict Engine
 
----
+Create conflicts for:
+● value mismatch
+● missing evidence
+● stale value
+● incompatible status
+● conflicting party identity
 
-## 15. Observability and AI evaluation
+Each conflict gets:
+● field
+● source A
+● source B
+● severity
+● explanation
+● recommended workflow
 
-**Track:** application (API latency, error rate, queue depth, job failure rate, processing time), AI (model latency, token usage/cost, extraction error rate, schema validation failures, hallucination/unsupported-fact rate, human edit rate), business (readiness, acceptance, rejection, recovery, follow-up performance, fee generation). Every AI operation gets a trace ID connected to the claim/document, so "why did Claim #104 fail?" is answerable in seconds.
+#### Phase 2.5 — Retrieval Layer
 
-**Build an AI evaluation system earlier than most founders expect.** Versioned test set of real/synthetic claims:
-- **Document extraction eval:** field-level accuracy on carrier, shipment ID, dates, amounts, quantities, exception type.
-- **Classification eval:** precision/recall/confusion matrix, with special attention to damage-vs-shortage, loss-vs-theft, demurrage-vs-physical-cargo-claim.
-- **Completeness eval:** missing-document recall, false block rate.
-- **Draft eval:** human-scored factual correctness, completeness, clarity, unsupported claims, correct amount/attachments, tone.
-- **Response-extraction eval:** acceptance/rejection detection, offer-amount extraction, rejection-reason classification, requested-document extraction.
-- **Regression suite:** every prompt/model/workflow change reruns against the full test set. No model upgrade ships to production because it "feels better."
+Start with relational/keyword retrieval.
 
----
+Only after evaluation proves a need for semantic retrieval:
+● enable pgvector
+● embed approved document chunks
+● store embedding metadata
+● retrieve only within organization scope
 
-## 16. Production stack recommendation
+#### Phase 2.6 — Upgrade Inbox Agent
 
-**Frontend:** Next.js/React, TypeScript, a component library with strong form/table/document-review support.
-**Backend:** Python, FastAPI, Pydantic, SQLAlchemy (or equivalent ORM).
-**Database:** PostgreSQL + pgvector where semantic retrieval is needed.
-**Object storage:** S3-compatible.
-**Jobs/workflows:** a conventional job queue for simple async work first; add LangGraph/Pydantic AI or a workflow engine only when durable, long-running, human-interrupted execution becomes a real requirement.
-**Document processing:** Docling / PaddleOCR / a commercial OCR API, evaluated per Section 8.
-**AI:** provider abstraction (Pydantic AI or hand-rolled) so models swap without rewriting business logic.
-**Auth:** Better Auth or a managed service unless auth itself is strategically important.
-**Payments/billing:** a reliable payment/invoicing provider for card processing; the contingency-fee ledger itself stays inside Algolyra since it's core business data.
+Inbox Agent now consults the Source-of-Truth Engine before acting.
 
-**Repository structure:**
-```
-algolyra/
-├── apps/{web/{app,components,features/{claims,documents,dashboard,billing,settings},lib}, api/{routes,dependencies,main.py}}
-├── packages/{domain,claims,documents,ai,rules,workflows,billing,communications,audit,analytics}
-├── workers/{document_worker,ai_worker,workflow_worker,notification_worker}
-├── migrations/
-├── tests/{unit,integration,evals,fixtures}
-├── scripts/  ├── infra/  ├── docs/{architecture,decisions,product,runbooks}
-└── README.md
-```
-Every schema change is a migration (`001_initial_schema`, `002_add_document_confidence`, ...) — never a manual production edit. A `seed_demo_data` script should produce 5 claims across different statuses (one rejected, one appealed, one recovered) on demand, so the product can be demoed without live customer data.
-
----
-
-## 17. Testing strategy
-
-- **Unit tests:** deadline calculations, fee calculations, claim state transitions, rules engine, amount calculations.
-- **Integration tests:** upload → extraction → claim creation → readiness → draft, end to end.
-- **E2E tests:** the full vertical slice (Section 19) exercised as a user would.
-- **AI evals:** the golden dataset described in Section 15, run in CI via DeepEval/RAGAS/Promptfoo (Section 8).
-- **Security tests:** tenant isolation (customer A can never retrieve customer B's data), file-upload attack surface, authorization bypass attempts.
-
----
-
-## 18. Critical failure modes to design against (name these explicitly, don't discover them in production)
-
-1. **Hallucinated claim facts** — mitigated by Section 4's grounding rule + Section 7.4's evidence-linked extraction.
-2. **Wrong shipment matched** — mitigated by Section 7.6's confidence-staged matching.
-3. **Wrong deadline** — mitigated by Section 7.10's deterministic-only calculation + Section 7.9's sourced/versioned rules.
-4. **Incorrect claim amount** — mitigated by Section 7.11's provenance trail.
-5. **Duplicate submission** — mitigated by Section 13's idempotency.
-6. **AI sends an unauthorized communication** — mitigated by Section 9's server-side state-machine enforcement.
-7. **Duplicate recovery billing** — mitigated by Section 7.18's event-based recovery model (never a mutable single field).
-8. **One customer's data retrieved for another** — mitigated by `organization_id` scoping enforced at the query layer, tested explicitly (Section 17).
+PHASE 2 EXIT CRITERIA:
+● A shipment can be reconstructed from multiple information sources.
+● Conflicts are surfaced, never silently overwritten.
+● All later agents can read the same canonical shipment context.
 
 ---
 
-## 19. Definition of done for a production claim
+### PHASE 3 — BILLING AUDIT AGENT
 
-A claim is "done" only when: shipment identified, claim type classified with sufficient confidence, all required evidence present or explicitly waived, amount calculated with a provenance trail, deadline calculated deterministically from a sourced rule, human review completed and recorded, submission recorded with a channel and external reference, every subsequent carrier response parsed and stored, every recovery event recorded individually, the fee event calculated and tied to a specific recovery event, and the full chain is auditable end to end from a single claim ID.
+Goal: Detect financial discrepancies with deterministic evidence first, then use AI for explanation/ambiguity.
 
----
+#### Phase 3.1 — Invoice Intake
 
-## 20. Phase roadmap
+Implement:
+● invoice email ingestion
+● invoice document storage
+● invoice number detection
+● shipment association
+● duplicate detection
 
-### Phase 0 — Business validation before deep engineering
-Goal: prove a real decision-maker will use and evaluate the workflow. Deliverables: 5-10 structured customer interviews, 2-3 real/anonymized claim examples, current-process mapping, estimated claims/month, average claim value, current recovery rate if available, current staff time per claim, current write-off pattern, buyer identified, pilot criteria defined. **Exit criterion:** at least one credible prospective customer agrees to test a working workflow with real or realistic data.
+#### Phase 3.2 — Rate / Contract Data Model
 
-### Phase 1 — Demo
-Build: auth, organization, claim creation, document upload/parsing, structured extraction, classification, missing-document detection, draft generation, human review — for **one carrier, one claim type (damage), one document workflow, one submission format, one user.** Do not build: carrier portal integrations, full automated billing, autonomous negotiation, a large carrier-rule catalog, sophisticated analytics. **Exit criterion:** a real broker looks at one claim and says "this saves me meaningful work and I would use it."
+Create models for:
+● base rate
+● minimum charge
+● fuel schedule
+● accessorials
+● class/rate rules
+● effective dates
+● lane/customer/carrier scope
 
-### Phase 2 — Pilot workflow
-Add: claim dashboard, statuses, deadlines, tasks, follow-ups, audit log, carrier responses, approval thresholds, recovery recording, multi-tenancy enforcement (adopt Better Auth/SaaS-Boilerplate here), responsive web (not a dedicated mobile build), broker-only workspace (not multi-party collaboration yet). **Exit criterion:** a customer uses Algolyra for multiple claims without the founder manually operating every step.
+#### Phase 3.3 — Deterministic Audit Engine
 
-### Phase 3 — Monetization
-Add: contingency contracts, recovery events, fee calculation, invoice generation, reconciliation, revenue reporting. **Exit criterion:** at least one customer reaches a recovery and pays a fee under the contractual model.
+Implement rules for:
+1. duplicate invoice
+2. linehaul mismatch
+3. fuel mismatch
+4. unsupported accessorial
+5. weight mismatch
+6. class mismatch
+7. reclass discrepancy
+8. dimension/pallet discrepancy
+9. quote-versus-invoice mismatch
+10. arithmetic/total mismatch
 
-### Phase 4 — Reliability and scale
-Add: durable workflows, stronger tenant isolation, carrier rule versioning, email ingestion, TMS connectors, retry/recovery controls, production observability, security hardening, the full AI evaluation suite. **Exit criterion:** the platform handles a real increase in claim volume without founder-operated workarounds.
+Every rule returns structured evidence.
 
-### Phase 5 — Acceptance-rate optimization
-Once enough outcomes exist: rejection taxonomy, carrier outcome analytics, evidence recommendations, acceptance-risk model, similar-claim retrieval, proactive claim-quality recommendations. **Exit criterion:** measured improvement in acceptance/recovery metrics against the customer's own historical baseline.
+#### Phase 3.4 — Audit Agent with LangGraph
 
-### Phase 6 — Shipper product (later, per prior sequencing decisions)
-Reuse the core engine; add shipper-specific roles, dashboard, submission workflows, internal approvals, carrier/broker relationship mapping, shipper-focused analytics. Don't clone the backend — add a different experience on the same claim/recovery platform.
+Workflow:
+Invoice received
+→ identify shipment
+→ gather evidence
+→ run deterministic rules
+→ classify result
+→ request LLM explanation only where useful
+→ produce audit finding
+→ decide next workflow
 
-### Phase 7 — Recovery platform (later)
-Carrier intelligence, broader recovery analytics, more claim classes, more integrations, partner/API platform, additional recovery workflows. Only then consider insurance/subrogation and other large adjacent markets.
+#### Phase 3.5 — Finding Quality Controls
 
----
+Every finding must have:
+● expected value
+● billed value
+● difference
+● reason
+● source documents
+● rule ID
+● confidence
+● evidence references
 
-## 21. Demo scope for the immediate build
+Never output “confirmed” without sufficient evidence.
 
-```
-Create claim → Upload BOL/POD/invoice/photos → Parse documents → Extract facts
-→ Classify (damage) → Identify missing evidence → Calculate proposed amount
-→ Check deadline → Generate claim package → Human review → Approve
-→ Mark submitted → Track status
-```
-Demo story: system shows `Shipment: 847293 | Carrier: ABC Trucking | Claim type: Damage | Claim amount: $8,000 | Deadline: September 15 | Evidence: 4/4 present`, AI produces a draft, user reviews highlighted evidence, approves, system shows `Claim Ready for Submission`. That's the entire first meaningful demo — nothing more is required to prove the concept.
+#### Phase 3.6 — Cost Optimization
 
----
+Use cheap/local model for:
+● document classification
+● simple extraction validation
+● email classification
 
-## 22. What to explicitly postpone
+Use stronger model only for:
+● ambiguous contract language
+● complex discrepancy explanation
+● multi-document reasoning
 
-Full autonomous negotiation, broad carrier-portal automation, every claim type/jurisdiction at once, insurer/subrogation platform, shipper platform before the broker workflow is validated, complex marketplace/network features, large-scale predictive models before enough outcome data exists, microservices, custom foundation models, custom OCR models before the baseline pipeline actually fails, and any generic AI assistant/chatbot that doesn't improve claim throughput.
-
----
-
-## 23. Non-negotiable decisions (the ones that should survive any future scope debate)
-
-1. Broker/3PL first. 2. Shipper later, on the shared core platform. 3. Contingency pricing is a product requirement, not a pricing-page decision. 4. Recovered dollars must be traceable to claims and payment events. 5. AI outputs must be evidence-grounded. 6. Rules and financial logic must be deterministic. 7. Human approval enforced server-side. 8. No autonomous high-stakes negotiation. 9. Every major workflow action is auditable. 10. The first production architecture must be simple enough for a solo founder to operate. 11. The first optimization target is recovered dollars, not AI novelty. 12. No feature gets built merely because it sounds impressive.
-
----
-
-## 24. Development order and first 30 engineering tasks
-
-```
-1. Org/auth  2. Shipment/claim/document core  3. Document processing pipeline
-4. Claim classification/completeness  5. Rules/deadline engine  6. Claim drafting
-7. Human review/approval  8. Claim state machine  9. Submission record
-10. Follow-up tasks  11. Carrier response parsing  12. Recovery events
-13. Contingency fee ledger  14. Invoice generation  15. Analytics
-16. Integrations  17. Advanced outcome models
-```
-Do not reverse this order by building analytics before the core claim lifecycle works.
-
-**First 30 tasks:** (1) create monorepo (2) configure frontend (3) configure backend (4) configure PostgreSQL (5) org/user tables (6) shipment table (7) claim table (8) document table (9) object storage (10) document upload (11) document viewer (12) integrate first document parser (13) define extraction schemas (14) extraction worker (15) persist evidence/provenance (16) shipment matching (17) claim classification (18) claim requirement model (19) completeness checks (20) basic deadline model (21) draft generation (22) claim review screen (23) approval endpoint (24) claim state machine (25) claim detail screen (26) submission record (27) follow-up task model (28) recovery event model (29) contingency fee calculator (30) audit log.
-
-At the end of this list you have a real vertical slice, not a collection of disconnected AI demos.
-
-**Immediate milestone (not "production-ready Algolyra"):** a broker uploads a real or realistic claim package and, within a few minutes, Algolyra produces a structured, evidence-linked, human-reviewable claim package with visible missing evidence and deadline status. Once that works, add tracking → follow-up → recovery → billing. Then you have the beginnings of the actual business.
-
----
-
-## 25. Business model implementation
-
-**Contract must define:** eligible claims, recovery definition, contingency percentage, payment trigger, treatment of partial recovery, treatment of offsets/credits, cancellation rules, claim ownership, confidentiality, document/data processing, dispute process — have qualified legal counsel review before production use.
-
-**Unit economics to track from Phase 3 onward:** cost to process a claim (AI + infra + time), average recovered $ per claim, average fee $ per claim, contribution margin per claim, customer acquisition cost, payback period, gross margin at scale.
-
-**Go-to-market:** ICP is uninsured/self-insured brokers/3PLs doing 200+ shipments/month. First sales motion is high-touch, founder-led pilots, not self-serve — the product is too new and the trust bar (per customer research) is too high for cold self-serve signup. Pilot design: free or heavily discounted first cohort, explicit success criteria (X claims processed, Y% time saved, Z$ recovered) defined upfront with the pilot customer.
-
-**Competitive strategy:** win on contingency pricing (nobody else offers it at this segment) and on evidence-grounded trust (Section 4-11) rather than trying to out-feature enterprise TMS-bundled claims modules.
-
-**Long-term moat:** a proprietary claim-outcome dataset (Section 11's feedback loop), a carrier-intelligence graph built from real claims across many customers, claim-quality intelligence that improves with volume, and the resulting network advantage — none of which exist until Phase 4/5 real data accumulates. Don't build the moat features before the moat has data to build on.
+PHASE 3 EXIT CRITERIA:
+● Historical invoices can be audited.
+● Findings are explainable.
+● Financial arithmetic is deterministic.
+● Agent cost per audited invoice is measurable.
 
 ---
 
-## 26. Final architecture (target state, not v1)
+### PHASE 4 — DISPUTE AGENT
 
-```
-                    ALGOLYRA
-                        |
-       +----------------+----------------+
-       |                                 |
- Broker / 3PL Workspace             Shipper Workspace (Phase 6)
-       |                                 |
-       +----------------+----------------+
-                        |
-                Claims Platform
-                        |
-      +-----------------+------------------+
-      |                 |                  |
- Documents          Rules Engine      Workflow Engine
-      |                 |                  |
- OCR / VLM         Deadlines         Human Approval
- Extraction        Requirements       Follow-ups
-      |                 |                  |
-      +-----------------+------------------+
-                        |
-                 Claim Intelligence (Phase 5)
-                        |
-      +-----------------+------------------+
-      |                 |                  |
- Drafting          Response AI       Outcome Data
-      |                 |                  |
-      +-----------------+------------------+
-                        |
-                 Recovery Engine
-                        |
-               Recovery Events
-                        |
-                 Fee Calculation
-                        |
-                    Billing
-                        |
-                  Revenue $$$
-```
+Goal: Convert verified audit findings into real recovery actions.
 
-Strategic feedback loop: `more claims → more structured outcomes → better intelligence → better claim preparation → better recovery → more customer value → more claims`. That loop is the long-term product advantage — but it only starts once Phase 0-3 have produced real claims to learn from.
+#### Phase 4.1 — Dispute Data Model
+
+Implement:
+● dispute ID
+● invoice ID
+● shipment ID
+● disputed amount
+● expected amount
+● evidence set
+● recipient
+● submission timestamp
+● status
+● carrier response
+● recovery amount
+
+#### Phase 4.2 — Recipient Resolution
+
+Create a verified carrier-contact registry.
+
+Sources may include:
+● customer-configured billing address
+● verified carrier profile
+● approved portal destination
+
+Never generate a destination from model memory.
+
+#### Phase 4.3 — Dispute Package Generator
+
+Generate:
+● subject
+● concise explanation
+● invoice details
+● disputed lines
+● expected amount
+● evidence references
+● attachments
+
+LLM drafts language; deterministic data fills financial facts.
+
+#### Phase 4.4 — Approval Policy
+
+Rules:
+low-risk + high-confidence + below customer auto-send limit
+→ auto-send
+
+otherwise
+→ human approval
+
+#### Phase 4.5 — Send + Track
+
+Implement:
+● email submission
+● portal submission adapter later if needed
+● response thread tracking
+● follow-up scheduling
+● status transitions
+● timeout/escalation
+
+#### Phase 4.6 — Recovery Verification
+
+Accept recovery only when supported by:
+● carrier approval
+● credit memo
+● corrected invoice
+● AP/TMS confirmation
+● explicit customer confirmation
+
+Create a recovery ledger separate from the agent's predicted recovery.
+
+PHASE 4 EXIT CRITERIA:
+● A verified discrepancy can become a real dispute.
+● Dispute status is trackable.
+● Recovery is based on evidence, not self-reported assumptions.
 
 ---
 
-## 27. The actual company-building sequence
+### PHASE 5 — RISK / VERIFICATION AGENT
 
-1. Get the first real broker/3PL to use the system. 2. Process multiple real claims. 3. Measure acceptance and recovery. 4. Identify why claims fail. 5. Build features that reduce those specific failures. 6. Prove Algolyra produces more recovered dollars with less manual work. 7. Charge on recovered dollars. 8. Expand the workflow until Algolyra is the system of record for claims. 9. Use accumulated outcomes to build carrier/recovery intelligence. 10. Add shippers as a second customer category on the same core engine. 11. Expand into broader recovery workflows only after the first machine works.
+Goal: Prevent suspicious carrier or transaction actions.
+
+#### Phase 5.1 — Carrier Identity Model
+
+Store:
+● legal name
+● MC/USDOT IDs where applicable
+● authority status snapshot
+● insurance metadata where legally/technically available
+● approved contacts
+● domains
+● payment destinations
+● verification timestamps
+
+#### Phase 5.2 — Verification Connectors
+
+Implement the minimum needed external verification sources.
+
+Connector rules:
+● cache responses where permitted
+● record source and timestamp
+● rate-limit requests
+● never represent stale data as live
+
+#### Phase 5.3 — Risk Rules
+
+Start with deterministic checks:
+● identity mismatch
+● domain/contact mismatch
+● unexpected payment change
+● missing/invalid authority data
+● conflicting carrier information
+● suspicious reuse patterns
+
+#### Phase 5.4 — Risk Agent
+
+The model explains evidence; deterministic rules generate core risk signals.
+
+Outputs:
+● allow
+● review
+● hold
+
+Never output an unsupported allegation of fraud.
+
+#### Phase 5.5 — Action Guardrails
+
+High-risk outcomes can block:
+● tender
+● payment detail changes
+● sensitive document release
+
+Blocking must be configurable and reversible by an authorized human.
+
+PHASE 5 EXIT CRITERIA:
+● Risk checks can run automatically before configured actions.
+● Evidence is visible to the reviewer.
+● High-risk actions can be safely held.
 
 ---
 
-## 28. Final implementation principle
+### PHASE 6 — EXCEPTION AGENT + DURABLE 24/7 EXECUTION
 
-```
-PROBLEM → DOCUMENTS → UNDERSTANDING → COMPLETE + VALID CLAIM → HUMAN APPROVAL
-   → SUBMISSION → FOLLOW-UP → RECOVERY → MONEY → DATA → BETTER CLAIMS → HIGHER RECOVERY
-```
+Goal: Turn the product from event-driven automation into continuous operations.
 
-That loop is the product. The AI is the acceleration layer. The recovery is the value. The contingency fee is the monetization. The accumulated outcomes are the long-term intelligence moat. Nothing in this document should be built out of sequence with that loop — build the loop first, narrow, for one carrier and one claim type, before touching anything else in this file.
+#### Phase 6.1 — Exception Engine
+
+Standardize exception types:
+● late pickup
+● missing pickup confirmation
+● missing POD
+● delayed ETA
+● no carrier response
+● missing document
+● unresolved billing dispute
+● unresolved truth conflict
+
+#### Phase 6.2 — Follow-up Policy Engine
+
+Each exception has:
+● trigger condition
+● SLA
+● first action
+● follow-up interval
+● maximum attempts
+● escalation owner
+● stop/resolution condition
+
+#### Phase 6.3 — Temporal Integration
+
+GitHub repo: https://github.com/temporalio/sdk-python
+
+Implement Temporal workflows for operations that must survive process/server failure and wait for external responses.
+
+Candidate workflows:
+● dispute follow-up
+● missing POD follow-up
+● carrier response chase
+● human approval pause/resume
+● scheduled audit jobs
+
+Keep short request/response operations in FastAPI/background tasks where Temporal adds no value.
+
+#### Phase 6.4 — 24/7 Worker Model
+
+Deploy:
+● API service
+● background worker
+● Temporal worker if enabled
+● database
+● queue/cache as needed
+
+Add:
+● health checks
+● automatic restart
+● graceful shutdown
+● retry policies
+● dead-letter handling
+● monitoring
+
+#### Phase 6.5 — Exception Agent
+
+Workflow:
+Detect exception
+→ verify exception
+→ load shipment truth
+→ select action
+→ execute communication/tool
+→ wait
+→ interpret response
+→ update truth
+→ resolve or escalate
+
+PHASE 6 EXIT CRITERIA:
+● Agent workflows continue after process restarts.
+● Long-running tasks survive delayed external responses.
+● Exceptions are automatically followed through to resolution/escalation.
 
 ---
 
-## 29. Addendum — Expanded problem research and strategic expansion modules
+### PHASE 7 — INTEGRATION HARDENING + PRODUCTION SECURITY
 
-*(Added from an external market/product research report, cross-checked against independent sources before inclusion. Nothing above this line was altered — this addendum only adds.)*
+Goal: Make the MVP safe enough for real customer data and real money-related workflows.
 
-### 29.1 The core economic framing, restated with the industry data behind it
+#### Phase 7.1 — TMS Adapter Interface
 
-Freight claims industry-wide have a baseline recovery rate commonly cited around 30–50%, meaning a large share of damaged/lost/short freight value is written off annually — consistent with the $15-20k/broker/year abandonment figure already in this plan's customer research (Section 1). The root causes are the same three this plan already targets, now with the legal backing made explicit:
+Do not hard-code one TMS throughout the application.
 
-- **Filing-window compliance.** Under the Carmack Amendment (49 U.S.C. § 14706), claimants have a federal minimum of **nine months from delivery (or expected delivery, if lost)** to file a formal written claim — but individual carrier tariffs and bills of lading frequently impose **much shorter** notice periods, commonly 5-15 days for concealed damage. This is exactly the visible-vs-concealed distinction already built into `carrier_rule_sets`/`carrier_claim_rules` (Section 10) — this addendum confirms the legal basis is real and the distinction is correctly modeled.
-- **Documentation incompleteness.** Missing exception notations or lost photos are enough for an instant carrier denial — already the top denial cause in this plan's acceptance-rate research (Section 11).
-- **Small-claim abandonment.** Claims in the $400-$5,000 range often cost more in manual labor to file than their expected payout — the exact economic justification for AI-driven cost compression already stated in Section 0.1.
+Create an interface such as:
+TMSAdapter
+├── get_shipment()
+├── update_shipment()
+├── add_note()
+├── attach_document()
+├── get_invoice()
+├── update_invoice()
+└── search_shipments()
 
-**One new, previously-unmodeled deadline to add to the rules engine:** if a carrier denies a claim, the claimant generally has **two years and one day from the date of the carrier's written denial** to file a lawsuit. This is a second, separate deadline clock that should be tracked once a claim enters `denied`/`appealed` status — add `lawsuit_deadline_at` (computed as `denial_date + 2 years + 1 day`) to the `claims` table's deadline logic in Section 10, and surface it in the deadline engine (Section 7.10) alongside the filing deadline. This matters specifically for Section 31.3's legal-escalation-partnership feature below — it's the clock that determines whether a legal partner still has time to act on a denied claim.
+Implement the first customer's TMS only.
 
-### 29.2 Four additional claim-lifecycle failure points (verified, add to the denial-cause table and completeness engine)
+#### Phase 7.2 — Accounting Adapter Interface
 
-These are real, additional reasons claims get denied, beyond the ones already in Section 11's table. Each maps to a specific completeness-engine check (Section 7.8) or claim-requirement (Section 10's `claim_requirements` table).
+Create:
+● get_invoice
+● get_credit_memo
+● record_verified_recovery
+● get_payment_status
 
-**A. Concealed damage and the short notification window.** Already partially modeled (Section 10's `concealed_deadline_days`), but the addendum sharpens the point: most carrier tariffs require written notice of concealed damage within roughly 2-5 business days of delivery — tighter than the general 5-business-day assumption already in this plan. Treat the exact window as carrier-specific data pulled into `carrier_claim_rules`, not a single hardcoded constant.
+Do not grant the agent unrestricted accounting permissions.
 
-**B. Failure to retain damaged freight (salvage/mitigation duty) — independently confirmed as a real, common, unappealable denial reason.** GSA's own freight-claims guidance states plainly that failure to preserve damaged cargo and packaging until the carrier authorizes disposal can result in claim denial, and NMFC Item #300150 establishes a legal duty to mitigate the carrier's loss where salvage has value. **New required completeness check:** add a `salvage_retained` boolean/status field to `claim_requirements`, defaulting to "unknown" and requiring explicit confirmation before submission — a claim should never reach `READY_FOR_REVIEW` without this being addressed, since it's an outright, unappealable denial ground.
+#### Phase 7.3 — Authentication / Authorization
 
-**C. Double-brokering and carrier identity mismatch.** A real and growing problem: brokers file against the carrier named on the rate confirmation, only to discover a different, unverified party actually hauled the load — whose insurance may not cover the claim, or may not exist. This directly threatens the collectibility of a claim regardless of how well-documented it is. See Section 31.2 for the proposed countermeasure feature.
+Implement:
+● organization isolation
+● role-based permissions
+● service-to-service authentication
+● encrypted OAuth/token storage
+● secret rotation strategy
+● audit of privileged actions
 
-**D. Packaging vs. carrier negligence disputes.** Carriers routinely invoke the Carmack Amendment's "act or default of the shipper" exclusion, arguing inadequate packaging or improper load securement caused the damage. This is already captured in this plan's existing Section 4 constraint (factual indicators, not legal conclusions) and Section 11's contradiction detection — no new architecture needed, but it confirms that pre-filtering likely-shipper-fault claims (already planned) is addressing a real, heavily-used carrier denial tactic, not a hypothetical one.
+#### Phase 7.4 — Tool Permission Matrix
 
-### 29.3 Strategic expansion modules (Phase 5-7 — do not build before Phase 0-4 are working, per this plan's existing phase discipline)
+Example:
+read_email → auto
+send_email → policy-controlled
+update_shipment → auto if validated
+create_dispute → auto/approval by amount
+send_dispute → approval by policy
+change_payment_information → human only
+approve financial adjustment → human only
 
-These are legitimate, well-reasoned revenue/product expansions. Each is tagged with the phase it belongs to, consistent with this plan's existing anti-scope-creep principles (Sections 22-23) — none of them belong in the Phase 0-2 build.
+#### Phase 7.5 — Observability
 
-**29.3.1 Automated salvage valuation & liquidation module (Phase 5+).** Damaged goods often retain real residual value that brokers have no time to realize, resulting in either a full write-off or an excessive carrier salvage deduction. Proposed: an AI-vision-assisted salvage valuation step off the same damage photos already captured in Section 7.5, connected to liquidation marketplaces or salvage buyers, deducting salvage value accurately before submission. **Monetization:** a platform fee or revenue share on liquidated salvage separate from the core recovery contingency fee — a genuine second revenue line on the same evidence pipeline, similar in spirit to the freight-bill-audit add-on already noted in Section 25. Requires real claim volume and salvage-buyer relationships before it's viable — Phase 5, not earlier.
+Track:
+● request IDs
+● agent run IDs
+● tool latency
+● tool failure rate
+● LLM latency
+● token usage
+● cost per run
+● actions per shipment
+● human escalation rate
+● external API errors
 
-**29.3.2 Carrier insurance & double-brokering verification ("Risk Shield") (Phase 5+, with one factual correction).** The proposed feature: query FMCSA data at shipment/claim intake to flag carriers with lapsed authority or uncertain insurance, addressing failure point 29.2.C above. **Correction to the source report:** FMCSA's public SAFER system (`safer.fmcsa.dot.gov`) provides authority/registration/safety data for free, but **insurance status specifically lives in a separate system, FMCSA Licensing & Insurance (`li-public.fmcsa.dot.gov`)** — a common mistake even among brokers, per independent research. Both are free, public, and have no official modern API (third-party wrappers exist but aren't official FMCSA products) — build this as a scheduled lookup/scrape against both public endpoints, not a single unified "SAFER API" call. **Monetization:** a premium risk-management tier or a higher contingency rate on claims flagged as higher-collectibility-risk, as the source report proposes.
+PHASE 7 EXIT CRITERIA:
+● Customer data is isolated.
+● Sensitive actions are permission-controlled.
+● Operational failures are observable.
+● Cost per workflow is measurable.
 
-**29.3.3 Tiered contingency & legal escalation partnerships (Phase 6+).** For claims a carrier denies and won't reconsider through the standard appeal loop (Section 21's negotiation/appeal workflow), partner with freight-specialized law firms for formal demand letters, litigation, or arbitration, at a materially higher contingency rate (e.g., 30-35% vs. the standard 15-20%) on amounts recovered through that escalation path. This is a real, sound structure — it monetizes the highest-value disputed claims without requiring in-house legal headcount, and it's exactly what the newly-added `lawsuit_deadline_at` field (Section 29.1) exists to support: knowing precisely how long a legal partner has to act on a denied claim before the right disappears entirely.
+---
 
-**29.3.4 Proactive statute & tariff guardian (Phase 5+).** Beyond the standard 9-month federal Carmack window, specific broker-carrier Master Service Agreements (MSAs) and international multimodal waybills can impose shorter contractual limitation periods (60-180 days is cited as typical). Proposed: a contract-parsing step that ingests MSAs alongside the BOL to extract custom, shorter limitation clauses and override the standard statutory clock when a contract requires it. This is a natural extension of the sourced/versioned rules engine already specified in Section 7.9/10 — the same "every rule needs a source, verification, and effective dates" discipline just applies to contract-derived rules, not only carrier-tariff rules. Positions Algolyra as risk mitigation against broker E&O exposure, not just a recovery tool — a meaningful differentiator once the core product has traction, but explicitly not a Phase 0-2 concern since it requires reliable contract-parsing accuracy that doesn't exist yet.
+## 4. AGENT IMPLEMENTATION STANDARD
 
-### 29.4 Updated denial-cause reference (supersedes nothing — read alongside Section 11's original table)
+Every agent must have these files/modules:
+agent_name/
+├── graph.py        # LangGraph definition
+├── state.py        # typed state
+├── prompts.py      # only model instructions
+├── policies.py     # deterministic policy checks
+├── tools.py        # allowed tools for this agent
+├── validators.py   # input/output validation
+├── service.py      # business orchestration outside model
+└── tests/
+    ├── test_happy_path.py
+    ├── test_ambiguous.py
+    ├── test_conflict.py
+    ├── test_tool_failure.py
+    └── test_idempotency.py
 
-| Additional denial/collectibility cause | Countermeasure | Phase |
-|---|---|---|
-| Failure to retain damaged freight (salvage/mitigation duty) | Hard completeness check (`salvage_retained` status) before `READY_FOR_REVIEW` | Phase 1 (check), Phase 5 (salvage valuation module) |
-| Concealed-damage notice window narrower than assumed | Carrier-specific window in `carrier_claim_rules`, not a hardcoded constant | Phase 1 |
-| Double-brokering / uncollectible carrier | FMCSA SAFER + L&I verification at intake, flagged as risk | Phase 5 |
-| Post-denial lawsuit statute of limitations missed | `lawsuit_deadline_at` tracked on denied/appealed claims | Phase 2 (field), Phase 6 (legal partnership workflow) |
-| Contract-specific limitation periods shorter than statutory | MSA-parsing extension of the sourced rules engine | Phase 5 |
+Agent run must always contain:
+run_id
+organization_id
+trigger_event_id
+entity_id
+model_used
+model_version
+prompt_version
+tools_available
+tool_calls
+decision
+confidence
+approval_state
+final_result
+errors
+cost_estimate
+started_at
+completed_at
 
-### 29.5 Sources for this addendum
+---
 
-Freight claims recovery-rate and industry framing: CXTMS (2026). Carmack Amendment statutory basis: 49 U.S.C. § 14706. Concealed-damage/denial patterns: Logistics Plus; Partnership Transportation. Salvage/mitigation duty: GSA freight-damage-claims guidance; FedEx Freight Loss & Damage Claims Guide; NMFC Item #300150 (via ATS Logistics); GetTent. Double-brokering risk: r/FreightBrokers community discussion (qualitative signal, not a primary legal/statistical source — treat accordingly). Post-denial lawsuit window: uslawexplained.com summary of Carmack Amendment litigation timelines. FMCSA SAFER vs. L&I system distinction: carriervets.com, verified independently against FMCSA's own public system structure.
+## 5. MODEL / COST ENGINEERING
+
+### 5.1 Routing policy
+
+Use LiteLLM as the model gateway.
+
+Routing principle:
+Simple classification / normalization
+→ cheapest acceptable model
+
+Normal multi-document reasoning
+→ mid-tier model
+
+Financially ambiguous / high-value reasoning
+→ strongest approved model
+
+### 5.2 Never use an LLM for deterministic work
+
+Do not ask the model to calculate:
+● invoice totals
+● percentage differences
+● duplicate detection
+● SLA timing
+● authorization limits
+● date arithmetic
+● exact policy thresholds
+
+Do those in code.
+
+### 5.3 Cache aggressively
+
+Cache:
+● carrier metadata
+● static contract/rate documents
+● repeated document interpretations where safe
+● deterministic lookups
+
+### 5.4 Limit context
+
+Retrieve only the documents/fields needed for the current decision.
+Do not send an entire customer database to the model.
+
+### 5.5 Tool search / progressive disclosure
+
+As the tool count grows, selectively expose only relevant tools. PydanticAI's current toolset patterns provide a useful reference for deferred tool loading and tool discovery.
+
+---
+
+## 6. TESTING STRATEGY
+
+### 6.1 Unit tests
+
+Test every:
+● rule
+● parser
+● validator
+● permission
+● repository
+● tool wrapper
+
+### 6.2 Agent trajectory tests
+
+For each agent test:
+● correct tool chosen
+● wrong tool rejected
+● missing information escalated
+● duplicate trigger is harmless
+● external failure retries safely
+● final result matches expected outcome
+
+### 6.3 Golden datasets
+
+Create fixed datasets from anonymized real-like freight examples.
+Track regressions across every model/prompt change.
+
+### 6.4 Financial correctness tests
+
+Billing audit calculations require deterministic expected answers.
+
+Example:
+Expected linehaul = 1200
+Billed linehaul = 1500
+Variance = 300
+
+The model must never determine the $300 arithmetic.
+
+### 6.5 Safety tests
+
+Attempt to induce the agent to:
+● send to an unverified recipient
+● change payment data
+● create duplicate disputes
+● overwrite trusted values
+● approve unauthorized financial actions
+
+All must fail safely.
+
+---
+
+## 7. DEPLOYMENT PLAN
+
+### Development
+● Antigravity
+● local FastAPI
+● local Postgres or Supabase development project
+● local/test model where practical
+
+### Staging
+● separate Supabase project
+● test Google/Microsoft mailbox
+● staging model keys
+● fake/sandbox external integrations where available
+
+### Production
+
+Minimum services:
+Frontend/dashboard
+API
+Worker
+PostgreSQL/Supabase
+Object storage
+LLM gateway
+Queue/cache
+Monitoring
+
+Add Temporal in Phase 6 for durable long-running workflows.
+
+---
+
+## 8. PHASE ORDER — DO NOT SKIP
+
+PHASE 1
+Foundation + Inbox vertical slice
+↓
+PHASE 2
+Source-of-Truth + Reconciliation
+↓
+PHASE 3
+Billing Audit
+↓
+PHASE 4
+Dispute Agent
+↓
+PHASE 5
+Risk / Verification
+↓
+PHASE 6
+Exception Agent + 24/7 durable execution
+↓
+PHASE 7
+Production hardening
+
+Within each phase, execute the numbered subphases in order.
+
+When Antigravity is instructed:
+“Build Phase 1.1”
+it must perform only Phase 1.1, run its tests, and stop.
+
+When instructed:
+“Build Phase 1.2”
+it may proceed only after Phase 1.1 exit criteria are satisfied.
+
+Do not jump to Phase 3 because a feature appears easy.
+
+---
+
+## 9. ANTIGRAVITY EXECUTION INSTRUCTION
+
+For every requested phase/subphase:
+1. Read this file first.
+2. Read the relevant existing code before changing it.
+3. Check the previous phase exit criteria.
+4. Identify the GitHub reference relevant to the subphase.
+5. Install/use only the required dependencies.
+6. Implement the smallest complete version of the subphase.
+7. Add/update tests before declaring completion.
+8. Run lint/type-check/tests.
+9. Fix failures.
+10. Summarize:
+● files created/changed
+● dependencies added
+● tests run
+● test results
+● remaining blockers
+11. Do not implement future phases unless explicitly instructed.
+
+Primary implementation principle:
+Build reliable deterministic infrastructure first, put agentic reasoning on top of it, and only grant the AI the minimum tools required to safely perform the job.
