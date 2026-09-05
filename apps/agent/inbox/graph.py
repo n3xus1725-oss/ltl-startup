@@ -14,31 +14,28 @@ import json
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
+
 from dateutil.parser import parse as parse_date
-from sqlalchemy.orm import Session
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
+from sqlalchemy.orm import Session
 
 from apps.agent.inbox.policies import (
-    AUTO_APPROVE_CONFIDENCE_THRESHOLD,
     evaluate_action_policy,
 )
 from apps.agent.inbox.prompts import (
     INTENT_CLASSIFICATION_PROMPT,
     PROMPT_VERSION,
-    PROPOSE_ACTION_PROMPT,
     SYSTEM_PROMPT,
 )
 from apps.agent.inbox.state import InboxAgentState
 from apps.agent.inbox.tools import ALLOWED_INBOX_TOOL_NAMES, get_inbox_tool_registry
-from apps.agent.inbox.validators import IntentClassificationOutput
 from packages.domain.logging import logger
 from packages.domain.resolver import ShipmentResolver
 from packages.llm.gateway import LLMGateway
 from packages.storage.repositories.agent_runs import AgentRunRepository
 from packages.storage.repositories.audit import AuditLogRepository
-from packages.storage.repositories.documents import DocumentRepository
 from packages.storage.repositories.messages import MessageRepository
 from packages.storage.repositories.shipments import ShipmentRepository
 from packages.storage.repositories.tasks import TaskRepository
@@ -56,7 +53,6 @@ def build_inbox_agent_graph(
 
     shipment_repo = ShipmentRepository(db)
     message_repo = MessageRepository(db)
-    doc_repo = DocumentRepository(db)
     task_repo = TaskRepository(db)
     agent_repo = AgentRunRepository(db)
     audit_repo = AuditLogRepository(db)
@@ -289,7 +285,6 @@ def build_inbox_agent_graph(
         intent = state.get("intent")
         shipment = state.get("shipment")
         extracted = state.get("extracted_data", {})
-        thread_id = state.get("thread_id") or "thread-inbound"
         trigger_id = state.get("trigger_event_id") or state.get("run_id")
 
         proposed_action: Optional[Dict[str, Any]] = None

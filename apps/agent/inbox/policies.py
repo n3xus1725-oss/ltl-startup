@@ -6,7 +6,8 @@ Per Rule 3 & 4: Business rules in deterministic Python, not LLM.
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Optional, Set
+
 from dateutil.parser import parse as parse_date
 
 AUTO_APPROVE_CONFIDENCE_THRESHOLD = 0.85

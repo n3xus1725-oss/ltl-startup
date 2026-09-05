@@ -1,6 +1,7 @@
 """Tests for Phase 1.3 Event Ingestion Layer."""
 
 import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

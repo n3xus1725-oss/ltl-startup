@@ -1,9 +1,11 @@
 """Base repository with organization scoping and common operations."""
 
 import uuid
-from typing import Any, Dict, Generic, List, Optional, Type, TypeVar
-from sqlalchemy import select, update, delete
+from typing import Generic, List, Optional, Type, TypeVar
+
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
+
 from packages.storage.db import Base
 
 ModelType = TypeVar("ModelType", bound=Base)

@@ -2,11 +2,11 @@
 
 import asyncio
 import json
-import logging
 import os
 import time
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel
 
 from packages.domain.config import get_settings
 from packages.domain.logging import logger
@@ -132,7 +132,7 @@ class LLMGateway:
                     latency_ms=latency,
                     parsed_json=parsed,
                 )
-            except asyncio.TimeoutError as e:
+            except asyncio.TimeoutError:
                 last_err = LLMError(f"LLM call timed out after {self.timeout_seconds}s (attempt {attempt}/{self.max_retries})")
                 logger.warning(str(last_err))
             except Exception as e:

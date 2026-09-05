@@ -2,8 +2,10 @@
 
 from contextlib import contextmanager
 from typing import Generator
+
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
+
 from packages.domain.config import get_settings
 from packages.domain.logging import logger
 

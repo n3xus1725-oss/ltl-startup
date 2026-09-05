@@ -1,10 +1,10 @@
 """Database migration script to apply all schema tables safely."""
 
 import sys
+
 from packages.domain.config import get_settings
 from packages.domain.logging import logger
-from packages.storage.db import engine, Base
-import packages.domain.models  # Ensure all models are registered with Base.metadata
+from packages.storage.db import Base, engine
 
 
 def apply_migrations():

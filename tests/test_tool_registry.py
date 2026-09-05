@@ -1,13 +1,13 @@
 """Comprehensive tests for Phase 1.7 Tool Registry and 8 Standard Tools."""
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from packages.domain.models import AuditLog, Document, Shipment, ToolCall
 from packages.storage.db import Base
 from packages.storage.repositories.agent_runs import AgentRunRepository
 from packages.storage.repositories.documents import DocumentRepository
@@ -16,18 +16,9 @@ from packages.storage.repositories.shipments import ShipmentRepository
 from packages.tools.registry import (
     ToolContext,
     ToolPermissionDenied,
-    ToolRegistry,
 )
 from packages.tools.shipment_tools import (
     create_standard_tool_registry,
-    FindShipmentTool,
-    GetShipmentTool,
-    UpdateShipmentTool,
-    AttachDocumentTool,
-    CreateTaskTool,
-    SendEmailTool,
-    ReplyToThreadTool,
-    CreateExceptionTool,
 )
 
 

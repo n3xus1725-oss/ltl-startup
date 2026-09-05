@@ -3,8 +3,10 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
+
 from packages.domain.models import Shipment, ShipmentEvent
 from packages.storage.repositories.base import BaseRepository
 

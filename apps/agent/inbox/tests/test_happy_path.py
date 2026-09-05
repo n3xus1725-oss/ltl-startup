@@ -1,14 +1,14 @@
 """Test Happy Path for the 3 high-confidence workflows in Inbox Action Agent."""
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from apps.agent.inbox.service import run_inbox_agent
-from packages.domain.models import AgentRun, Shipment
 from packages.storage.db import Base
 from packages.storage.repositories.agent_runs import AgentRunRepository
 from packages.storage.repositories.organizations import OrganizationRepository

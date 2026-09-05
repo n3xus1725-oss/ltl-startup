@@ -4,10 +4,11 @@ Provides BaseTool abstract class, ToolContext, and ToolRegistry with permission 
 idempotency guarantees, and immutable audit logging.
 """
 
-from abc import ABC, abstractmethod
 import time
 import uuid
+from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Set, Type
+
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -143,12 +144,11 @@ class ToolRegistry:
         audit_repo = AuditLogRepository(db)
 
         if idemp_key and context.agent_run_id:
-            # Check if this tool call already ran for this agent run
-            existing_calls = agent_repo.list_all(context.organization_id)
             # Query ToolCall via agent_repo if idempotency match
             # If tool call with same idempotency key exists, return cached result
-            from packages.domain.models import ToolCall
             from sqlalchemy import select
+
+            from packages.domain.models import ToolCall
 
             existing_call = db.execute(
                 select(ToolCall).where(

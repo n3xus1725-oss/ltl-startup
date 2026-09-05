@@ -1,12 +1,11 @@
 """Tests for Phase 1.4 Gmail/Email Connector and Agent Typed Tools."""
 
-import uuid
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from packages.connectors.gmail import GmailConnector, RateLimitExceeded, normalize_email_address
+from packages.connectors.gmail import GmailConnector, RateLimitExceeded
 from packages.storage.db import Base
 from packages.storage.repositories.agent_runs import AgentRunRepository
 from packages.storage.repositories.audit import AuditLogRepository
@@ -15,7 +14,6 @@ from packages.storage.repositories.messages import MessageRepository
 from packages.storage.repositories.organizations import OrganizationRepository
 from packages.tools.email_tools import (
     EmailToolSet,
-    GetAttachmentInput,
     GetEmailInput,
     MarkEmailProcessedInput,
     ReplyToThreadInput,

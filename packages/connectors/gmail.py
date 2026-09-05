@@ -8,6 +8,7 @@ import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
 from sqlalchemy.orm import Session
 
 from packages.domain.logging import logger
@@ -133,7 +134,7 @@ class GmailConnector(BaseEmailConnector):
         self._mock_threads.setdefault(thread_id, []).append(message_id)
 
         # Store in database via MessageRepository
-        msg_record = self.msg_repo.create(
+        _ = self.msg_repo.create(
             organization_id=self.organization_id,
             external_message_id=message_id,
             thread_id=thread_id,

@@ -2,8 +2,10 @@
 
 import uuid
 from typing import Any, Dict, List, Optional
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
 from packages.domain.models import AuditLog
 from packages.storage.repositories.base import BaseRepository
 

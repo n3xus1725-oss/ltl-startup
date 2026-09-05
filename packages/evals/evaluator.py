@@ -8,13 +8,12 @@ Measures:
 - duplicate action rate (must be 0.0%)
 """
 
-import asyncio
-from datetime import datetime, timedelta, timezone
-import statistics
 import time
-from typing import Any, Dict, List, Optional
 import uuid
-from pydantic import BaseModel, Field
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List
+
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from apps.agent.inbox.service import InboxAgentService

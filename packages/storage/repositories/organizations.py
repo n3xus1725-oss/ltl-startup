@@ -1,9 +1,11 @@
 """Organization repository."""
 
 import uuid
-from typing import Optional, List
+from typing import List, Optional
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
 from packages.domain.models import Organization
 
 

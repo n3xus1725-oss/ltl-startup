@@ -4,6 +4,7 @@ import asyncio
 import signal
 import sys
 from datetime import datetime, timezone
+
 from packages.domain.config import get_settings
 from packages.domain.logging import logger, setup_logging
 

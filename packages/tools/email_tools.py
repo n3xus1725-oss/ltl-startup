@@ -4,11 +4,11 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from packages.connectors.gmail import GmailConnector
-from packages.domain.logging import logger
 from packages.storage.repositories.agent_runs import AgentRunRepository
 from packages.storage.repositories.audit import AuditLogRepository
 from packages.storage.repositories.documents import DocumentRepository

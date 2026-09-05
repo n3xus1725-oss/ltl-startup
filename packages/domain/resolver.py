@@ -10,7 +10,8 @@ Rule: Never choose arbitrarily when two shipments are plausible; mark as ambiguo
 import json
 import re
 import uuid
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
+
 from pydantic import BaseModel, Field
 
 from packages.domain.logging import logger

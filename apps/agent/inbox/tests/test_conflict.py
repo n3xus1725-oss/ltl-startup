@@ -1,13 +1,12 @@
 """Test handling of conflicting freight information and policy threshold violations."""
 
 from datetime import datetime, timedelta, timezone
-import uuid
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from apps.agent.inbox.policies import MAX_ALLOWED_ETA_DELAY_HOURS
 from apps.agent.inbox.service import run_inbox_agent
 from packages.storage.db import Base
 from packages.storage.repositories.organizations import OrganizationRepository

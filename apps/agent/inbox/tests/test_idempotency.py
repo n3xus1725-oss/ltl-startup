@@ -1,13 +1,12 @@
 """Test idempotency guarantees for Inbox Action Agent runs."""
 
-import uuid
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from apps.agent.inbox.service import run_inbox_agent
-from packages.domain.models import AgentRun, ShipmentEvent
+from packages.domain.models import AgentRun
 from packages.storage.db import Base
 from packages.storage.repositories.organizations import OrganizationRepository
 from packages.storage.repositories.shipments import ShipmentRepository

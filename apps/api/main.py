@@ -2,16 +2,17 @@
 
 import time
 import uuid
-from datetime import datetime, timezone
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from apps.api.api.v1.events import router as events_v1_router
 from packages.domain.config import get_settings
 from packages.domain.logging import logger, setup_logging
 from packages.storage.db import check_db_connection
-from apps.api.api.v1.events import router as events_v1_router
 
 settings = get_settings()
 setup_logging(settings.LOG_LEVEL)

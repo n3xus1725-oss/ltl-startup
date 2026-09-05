@@ -1,14 +1,13 @@
 """Comprehensive tests for Phase 1.5 Shipment Resolver."""
 
 import json
-import uuid
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from packages.domain.models import Organization, Shipment
-from packages.domain.resolver import ShipmentResolver, shipment_to_dict
+from packages.domain.resolver import ShipmentResolver
 from packages.llm.gateway import LLMGateway, LLMResponse
 from packages.storage.db import Base
 from packages.storage.repositories.organizations import OrganizationRepository

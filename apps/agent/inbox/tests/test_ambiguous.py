@@ -1,6 +1,5 @@
 """Test handling of ambiguous freight messages by Inbox Action Agent."""
 
-import uuid
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

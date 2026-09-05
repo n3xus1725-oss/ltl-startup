@@ -3,18 +3,9 @@
 Per Section 4 Agent Implementation Standard: allowed tools for this agent.
 """
 
-from typing import List
-from packages.tools.registry import BaseTool, ToolRegistry
+from packages.tools.registry import ToolRegistry
 from packages.tools.shipment_tools import (
     create_standard_tool_registry,
-    FindShipmentTool,
-    GetShipmentTool,
-    UpdateShipmentTool,
-    AttachDocumentTool,
-    CreateTaskTool,
-    SendEmailTool,
-    ReplyToThreadTool,
-    CreateExceptionTool,
 )
 
 ALLOWED_INBOX_TOOL_NAMES = [

@@ -2,7 +2,9 @@
 
 import uuid
 from datetime import datetime, timezone
+
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     DateTime,
@@ -15,10 +17,10 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
-    JSON,
     func,
 )
 from sqlalchemy.orm import relationship
+
 from packages.storage.db import Base
 
 

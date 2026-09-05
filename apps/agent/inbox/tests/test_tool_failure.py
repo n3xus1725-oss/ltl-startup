@@ -1,8 +1,6 @@
 """Test error handling and resilience when tools encounter failures."""
 
-import uuid
 import pytest
-from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -11,7 +9,7 @@ from apps.agent.inbox.service import run_inbox_agent
 from packages.storage.db import Base
 from packages.storage.repositories.organizations import OrganizationRepository
 from packages.storage.repositories.shipments import ShipmentRepository
-from packages.tools.registry import BaseTool, ToolContext, ToolRegistry
+from packages.tools.registry import BaseTool
 from packages.tools.shipment_tools import create_standard_tool_registry
 
 
@@ -46,7 +44,7 @@ async def test_agent_handles_tool_failure_gracefully(test_db, test_org):
     and sets terminal outcome to 'failed' rather than unhandled exception.
     """
     shipment_repo = ShipmentRepository(test_db)
-    shipment = shipment_repo.create(
+    _ = shipment_repo.create(
         organization_id=test_org.id,
         shipment_number="SHP-FAIL-1",
         load_id="LOAD-FAIL-1",

@@ -11,14 +11,14 @@ Implements all 8 required platform tools:
 8. create_exception
 """
 
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-import uuid
+
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from packages.connectors.gmail import GmailConnector
-from packages.domain.models import Shipment
 from packages.domain.resolver import shipment_to_dict
 from packages.storage.repositories.documents import DocumentRepository
 from packages.storage.repositories.exceptions import ExceptionRepository
@@ -26,7 +26,6 @@ from packages.storage.repositories.messages import MessageRepository
 from packages.storage.repositories.shipments import ShipmentRepository
 from packages.storage.repositories.tasks import TaskRepository
 from packages.tools.registry import BaseTool, ToolContext, ToolRegistry
-
 
 # ---------------- 1. find_shipment ---------------- #
 

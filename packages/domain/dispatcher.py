@@ -2,9 +2,16 @@
 
 import asyncio
 import uuid
-from typing import Any, Callable, Coroutine, Dict, Optional, Tuple
+from typing import Any, Callable, Coroutine, Dict, Tuple
+
 from sqlalchemy.orm import Session
-from packages.domain.events import EventStatus, InboundEventPayload, NormalizedEvent, normalize_event
+
+from packages.domain.events import (
+    EventStatus,
+    InboundEventPayload,
+    NormalizedEvent,
+    normalize_event,
+)
 from packages.domain.logging import logger
 from packages.storage.repositories.audit import AuditLogRepository
 

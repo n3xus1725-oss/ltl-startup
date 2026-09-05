@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
+
 from packages.domain.dispatcher import EventDispatcher
 from packages.domain.events import InboundEventPayload
 from packages.storage.db import get_db

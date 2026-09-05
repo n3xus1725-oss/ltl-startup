@@ -8,7 +8,8 @@ Generates the standardized 110-email golden test suite:
 """
 
 from typing import List, Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel
 
 
 class EvalEmailCase(BaseModel):
