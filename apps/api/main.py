@@ -73,6 +73,20 @@ async def correlation_id_middleware(request: Request, call_next):
 app.include_router(events_v1_router, prefix=settings.API_V1_PREFIX)
 
 
+@app.get("/", tags=["Root"])
+async def root():
+    """Root endpoint welcoming users and providing API documentation links."""
+    return {
+        "platform": "AI Freight Information & Execution Platform",
+        "status": "operational",
+        "version": "0.1.0",
+        "docs_url": "/docs",
+        "health_url": "/health",
+        "ready_url": "/ready",
+        "inbound_events_url": f"{settings.API_V1_PREFIX}/events/inbound",
+    }
+
+
 @app.get("/health", tags=["System"])
 async def health_check():
     """Liveness probe: returns 200 if process is running."""

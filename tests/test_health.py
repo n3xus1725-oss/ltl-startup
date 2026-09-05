@@ -9,6 +9,16 @@ from apps.api.main import app
 client = TestClient(app)
 
 
+def test_root_endpoint():
+    """Verify / returns 200 OK and expected platform structure."""
+    response = client.get("/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["platform"] == "AI Freight Information & Execution Platform"
+    assert data["status"] == "operational"
+    assert data["docs_url"] == "/docs"
+
+
 def test_health_endpoint():
     """Verify /health returns 200 OK and expected structure."""
     response = client.get("/health")
