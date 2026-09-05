@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -52,19 +52,69 @@ class Settings(BaseSettings):
     GMAIL_REFRESH_TOKEN: Optional[str] = Field(default=None)
     MOCK_EMAIL_CONNECTOR: bool = Field(default=True, description="Use test/mock mailbox connector for tests/local dev")
 
+    @field_validator("API_PORT", mode="before")
+    @classmethod
+    def parse_api_port(cls, v):
+        if v is None or v == "" or (isinstance(v, str) and not v.strip()):
+            return 8000
+        return int(v)
+
+    @field_validator("DB_PORT", mode="before")
+    @classmethod
+    def parse_db_port(cls, v):
+        if v is None or v == "" or (isinstance(v, str) and not v.strip()):
+            return 5432
+        return int(v)
+
+    @field_validator(
+        "DATABASE_URL",
+        "DIRECT_URL",
+        "DB_HOST",
+        "DB_USER",
+        "DB_PASSWORD",
+        "DB_NAME",
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "OPENAI_API_KEY",
+        "LITELLM_API_KEY",
+        "GMAIL_CLIENT_ID",
+        "GMAIL_CLIENT_SECRET",
+        "GMAIL_REFRESH_TOKEN",
+        mode="before",
+    )
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
     def get_database_url(self) -> str:
         """Return a valid SQLAlchemy connection URL. If using Supabase direct url with postgresql:// or postgres://,
         normalize to postgresql+psycopg:// for SQLAlchemy 2 with psycopg3 if needed, or fallback to sqlite for local tests.
         """
+        url: Optional[str] = None
         if self.DATABASE_URL and self.DATABASE_URL.strip():
             url = self.DATABASE_URL.strip()
+        elif self.DB_HOST and self.DB_USER and self.DB_PASSWORD and self.DB_NAME:
+            port = self.DB_PORT or 5432
+            url = f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{port}/{self.DB_NAME}"
+
+        if url:
             if url.startswith("postgres://"):
-                url = url.replace("postgres://", "postgresql+psycopg://", 1)
-            elif url.startswith("postgresql://"):
-                url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+                url = url.replace("postgres://", "postgresql://", 1)
+            # Pick installed PostgreSQL DBAPI driver (psycopg 3 or psycopg2)
+            if url.startswith("postgresql://") and not url.startswith("postgresql+"):
+                try:
+                    import psycopg  # noqa: F401
+                    url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+                except ImportError:
+                    try:
+                        import psycopg2  # noqa: F401
+                        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+                    except ImportError:
+                        pass
             return url
-        if self.DB_HOST and self.DB_USER and self.DB_PASSWORD and self.DB_NAME:
-            return f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+
         return "sqlite+pysqlite:///:memory:"
 
 
