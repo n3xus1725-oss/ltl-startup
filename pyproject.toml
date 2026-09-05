@@ -63,4 +63,4 @@ where = ["."]
 include = ["apps*", "packages*"]
 
 [tool.vercel]
-entrypoint = "api/index.py:app"
+entrypoint = "main:app"
