@@ -53,12 +53,14 @@ class Settings(BaseSettings):
     MOCK_EMAIL_CONNECTOR: bool = Field(default=True, description="Use test/mock mailbox connector for tests/local dev")
 
     def get_database_url(self) -> str:
-        """Return a valid SQLAlchemy connection URL. If using Supabase direct url with postgresql://,
+        """Return a valid SQLAlchemy connection URL. If using Supabase direct url with postgresql:// or postgres://,
         normalize to postgresql+psycopg:// for SQLAlchemy 2 with psycopg3 if needed, or fallback to sqlite for local tests.
         """
-        if self.DATABASE_URL:
-            url = self.DATABASE_URL
-            if url.startswith("postgresql://"):
+        if self.DATABASE_URL and self.DATABASE_URL.strip():
+            url = self.DATABASE_URL.strip()
+            if url.startswith("postgres://"):
+                url = url.replace("postgres://", "postgresql+psycopg://", 1)
+            elif url.startswith("postgresql://"):
                 url = url.replace("postgresql://", "postgresql+psycopg://", 1)
             return url
         if self.DB_HOST and self.DB_USER and self.DB_PASSWORD and self.DB_NAME:

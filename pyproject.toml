@@ -19,6 +19,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "langgraph>=1.2.0",
     "litellm>=1.40.0",
+    "python-dateutil>=2.9.0",
 ]
 
 [project.optional-dependencies]
