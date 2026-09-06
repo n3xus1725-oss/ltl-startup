@@ -208,6 +208,185 @@ async function loadRecoveryLedger() {
   }
 }
 
+async function loadPendingDisputeQueue() {
+  const el = document.getElementById('pending-disputes-list');
+  if (!el) return;
+  el.innerHTML = '<div class="text-slate-500 text-xs">Loading...</div>';
+  try {
+    const stateResp = await fetch('/api/v1/test-ui/state');
+    const state = await stateResp.json();
+    const orgId = state.organization_id;
+    if (!orgId) { el.innerHTML = '<div class="text-slate-500 text-xs">No organization found. Seed data first.</div>'; return; }
+    const resp = await fetch(`/api/v1/disputes?organization_id=${orgId}&status_filter=pending_approval`);
+    const data = await resp.json();
+    if (!data.disputes || data.disputes.length === 0) {
+      el.innerHTML = '<div class="flex items-center space-x-2 text-xs text-emerald-400 py-3"><span>✅</span><span>No pending disputes — all caught up!</span></div>';
+      return;
+    }
+    el.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-xs">
+      <thead><tr class="text-slate-500 border-b border-slate-700">
+        <th class="text-left py-2 pr-3">Dispute #</th>
+        <th class="text-left py-2 pr-3">Carrier</th>
+        <th class="text-left py-2 pr-3">Amount</th>
+        <th class="text-left py-2 pr-3">Subject</th>
+        <th class="text-left py-2 pr-3">Created</th>
+        <th class="text-left py-2">Action</th>
+      </tr></thead>
+      <tbody>${data.disputes.map(d => `
+        <tr class="border-b border-slate-800 hover:bg-slate-800/30" id="dispute-row-${d.id}">
+          <td class="py-2 pr-3 text-slate-200 font-mono">${d.dispute_number}</td>
+          <td class="py-2 pr-3 text-slate-300">${d.carrier_name}</td>
+          <td class="py-2 pr-3 text-amber-400 font-semibold">$${(d.disputed_amount || 0).toFixed(2)}</td>
+          <td class="py-2 pr-3 text-slate-400 max-w-xs truncate">${d.dispute_letter_subject || '—'}</td>
+          <td class="py-2 pr-3 text-slate-500">${d.created_at ? new Date(d.created_at).toLocaleDateString() : '—'}</td>
+          <td class="py-2 flex space-x-2">
+            <button onclick="approveDispute('${d.id}', '${orgId}')" class="px-2 py-1 rounded bg-emerald-800 hover:bg-emerald-700 text-emerald-200 text-[10px] font-medium transition">✓ Approve</button>
+            <button onclick="rejectDispute('${d.id}', '${orgId}')" class="px-2 py-1 rounded bg-red-900 hover:bg-red-800 text-red-200 text-[10px] font-medium transition">✗ Reject</button>
+          </td>
+        </tr>`).join('')}
+      </tbody></table></div>`;
+  } catch (err) {
+    el.innerHTML = `<div class="text-red-400 text-xs">Error: ${err.message}</div>`;
+  }
+}
+
+async function approveDispute(disputeId, orgId) {
+  try {
+    const resp = await fetch(`/api/v1/disputes/${disputeId}/approve?organization_id=${orgId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reviewed_by: 'broker_ui' })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Approval failed');
+    const row = document.getElementById(`dispute-row-${disputeId}`);
+    if (row) row.innerHTML = `<td colspan="6" class="py-2 text-emerald-400 text-xs">✅ Approved & sent — ${data.dispute?.dispute_number}</td>`;
+    setTimeout(() => loadPendingDisputeQueue(), 1500);
+  } catch (err) {
+    alert('Approve failed: ' + err.message);
+  }
+}
+
+async function rejectDispute(disputeId, orgId) {
+  const reason = prompt('Reason for rejection:');
+  if (!reason) return;
+  try {
+    const resp = await fetch(`/api/v1/disputes/${disputeId}/reject?organization_id=${orgId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reviewed_by: 'broker_ui', reason })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Rejection failed');
+    const row = document.getElementById(`dispute-row-${disputeId}`);
+    if (row) row.innerHTML = `<td colspan="6" class="py-2 text-red-400 text-xs">✗ Rejected: ${reason}</td>`;
+    setTimeout(() => loadPendingDisputeQueue(), 1500);
+  } catch (err) {
+    alert('Reject failed: ' + err.message);
+  }
+}
+
+async function loadSentDisputesDropdown() {
+  const sel = document.getElementById('recovery-dispute-select');
+  if (!sel) return;
+  try {
+    const stateResp = await fetch('/api/v1/test-ui/state');
+    const state = await stateResp.json();
+    const orgId = state.organization_id;
+    if (!orgId) return;
+    const resp = await fetch(`/api/v1/disputes?organization_id=${orgId}&status_filter=sent`);
+    const data = await resp.json();
+    sel.innerHTML = '<option value="">Select a sent dispute...</option>' +
+      (data.disputes || []).map(d =>
+        `<option value="${d.id}" data-org="${orgId}">${d.dispute_number} — ${d.carrier_name} ($${(d.disputed_amount||0).toFixed(2)})</option>`
+      ).join('');
+  } catch (err) {
+    console.error('Failed to load disputes:', err);
+  }
+}
+
+async function recordCarrierResponse() {
+  const sel = document.getElementById('recovery-dispute-select');
+  const disputeId = sel.value;
+  const orgId = sel.options[sel.selectedIndex]?.dataset?.org;
+  const responseType = document.getElementById('recovery-response-type').value;
+  const proofType = document.getElementById('recovery-proof-type').value;
+  const proofRef = document.getElementById('recovery-proof-ref').value;
+  const approvedAmt = document.getElementById('recovery-approved-amount').value;
+  const msgEl = document.getElementById('recovery-record-msg');
+
+  if (!disputeId || !responseType) {
+    msgEl.innerHTML = '<span class="text-red-400">Please select a dispute and response type.</span>';
+    return;
+  }
+
+  msgEl.innerHTML = '<span class="text-slate-400">Recording...</span>';
+
+  const payload = {
+    organization_id: orgId,
+    carrier_response_type: responseType,
+    proof_type: proofType || null,
+    proof_reference: proofRef || null,
+    approved_amount: approvedAmt && proofType ? parseFloat(approvedAmt) : null,
+    verified_by: proofType ? 'broker_ui' : null,
+  };
+
+  try {
+    const resp = await fetch(`/api/v1/disputes/${disputeId}/recovery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed');
+    const rec = data.recovery;
+    let msg = `✅ Recorded: ${responseType}`;
+    if (rec.approved_recovery) msg += ` | Recovery: <span class="text-emerald-400 font-bold">$${parseFloat(rec.approved_recovery).toFixed(2)}</span>`;
+    if (rec.revenue_share_amount) msg += ` | Platform Fee (15%): <span class="text-purple-400">$${parseFloat(rec.revenue_share_amount).toFixed(2)}</span>`;
+    msgEl.innerHTML = `<span class="text-emerald-300">${msg}</span>`;
+    loadRecoveryLedger();
+  } catch (err) {
+    msgEl.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`;
+  }
+}
+
+async function addCarrierContact() {
+  const stateResp = await fetch('/api/v1/test-ui/state');
+  const state = await stateResp.json();
+  const orgId = state.organization_id;
+  const carrier = document.getElementById('new-contact-carrier').value.trim();
+  const email = document.getElementById('new-contact-email').value.trim();
+  const name = document.getElementById('new-contact-name').value.trim();
+  const msgEl = document.getElementById('add-contact-msg');
+
+  if (!carrier || !email) {
+    msgEl.innerHTML = '<span class="text-red-400">Carrier name and billing email are required.</span>';
+    return;
+  }
+  if (!email.includes('@')) {
+    msgEl.innerHTML = '<span class="text-red-400">Please enter a valid email address.</span>';
+    return;
+  }
+
+  msgEl.innerHTML = '<span class="text-slate-400">Adding...</span>';
+  try {
+    const resp = await fetch('/api/v1/carrier-contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ organization_id: orgId, carrier_name: carrier, billing_email: email, contact_name: name || null })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed to add contact');
+    msgEl.innerHTML = `<span class="text-emerald-400">✅ Added: ${carrier} → ${email}</span>`;
+    document.getElementById('new-contact-carrier').value = '';
+    document.getElementById('new-contact-email').value = '';
+    document.getElementById('new-contact-name').value = '';
+    loadCarrierContacts();
+  } catch (err) {
+    msgEl.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`;
+  }
+}
+
 </script>
   <script>
     tailwind.config = {
@@ -426,6 +605,185 @@ async function loadRecoveryLedger() {
       </tbody></table></div>`;
   } catch (err) {
     listEl.innerHTML = `<div class="text-red-400 text-xs">Error: ${err.message}</div>`;
+  }
+}
+
+async function loadPendingDisputeQueue() {
+  const el = document.getElementById('pending-disputes-list');
+  if (!el) return;
+  el.innerHTML = '<div class="text-slate-500 text-xs">Loading...</div>';
+  try {
+    const stateResp = await fetch('/api/v1/test-ui/state');
+    const state = await stateResp.json();
+    const orgId = state.organization_id;
+    if (!orgId) { el.innerHTML = '<div class="text-slate-500 text-xs">No organization found. Seed data first.</div>'; return; }
+    const resp = await fetch(`/api/v1/disputes?organization_id=${orgId}&status_filter=pending_approval`);
+    const data = await resp.json();
+    if (!data.disputes || data.disputes.length === 0) {
+      el.innerHTML = '<div class="flex items-center space-x-2 text-xs text-emerald-400 py-3"><span>✅</span><span>No pending disputes — all caught up!</span></div>';
+      return;
+    }
+    el.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-xs">
+      <thead><tr class="text-slate-500 border-b border-slate-700">
+        <th class="text-left py-2 pr-3">Dispute #</th>
+        <th class="text-left py-2 pr-3">Carrier</th>
+        <th class="text-left py-2 pr-3">Amount</th>
+        <th class="text-left py-2 pr-3">Subject</th>
+        <th class="text-left py-2 pr-3">Created</th>
+        <th class="text-left py-2">Action</th>
+      </tr></thead>
+      <tbody>${data.disputes.map(d => `
+        <tr class="border-b border-slate-800 hover:bg-slate-800/30" id="dispute-row-${d.id}">
+          <td class="py-2 pr-3 text-slate-200 font-mono">${d.dispute_number}</td>
+          <td class="py-2 pr-3 text-slate-300">${d.carrier_name}</td>
+          <td class="py-2 pr-3 text-amber-400 font-semibold">$${(d.disputed_amount || 0).toFixed(2)}</td>
+          <td class="py-2 pr-3 text-slate-400 max-w-xs truncate">${d.dispute_letter_subject || '—'}</td>
+          <td class="py-2 pr-3 text-slate-500">${d.created_at ? new Date(d.created_at).toLocaleDateString() : '—'}</td>
+          <td class="py-2 flex space-x-2">
+            <button onclick="approveDispute('${d.id}', '${orgId}')" class="px-2 py-1 rounded bg-emerald-800 hover:bg-emerald-700 text-emerald-200 text-[10px] font-medium transition">✓ Approve</button>
+            <button onclick="rejectDispute('${d.id}', '${orgId}')" class="px-2 py-1 rounded bg-red-900 hover:bg-red-800 text-red-200 text-[10px] font-medium transition">✗ Reject</button>
+          </td>
+        </tr>`).join('')}
+      </tbody></table></div>`;
+  } catch (err) {
+    el.innerHTML = `<div class="text-red-400 text-xs">Error: ${err.message}</div>`;
+  }
+}
+
+async function approveDispute(disputeId, orgId) {
+  try {
+    const resp = await fetch(`/api/v1/disputes/${disputeId}/approve?organization_id=${orgId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reviewed_by: 'broker_ui' })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Approval failed');
+    const row = document.getElementById(`dispute-row-${disputeId}`);
+    if (row) row.innerHTML = `<td colspan="6" class="py-2 text-emerald-400 text-xs">✅ Approved & sent — ${data.dispute?.dispute_number}</td>`;
+    setTimeout(() => loadPendingDisputeQueue(), 1500);
+  } catch (err) {
+    alert('Approve failed: ' + err.message);
+  }
+}
+
+async function rejectDispute(disputeId, orgId) {
+  const reason = prompt('Reason for rejection:');
+  if (!reason) return;
+  try {
+    const resp = await fetch(`/api/v1/disputes/${disputeId}/reject?organization_id=${orgId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reviewed_by: 'broker_ui', reason })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Rejection failed');
+    const row = document.getElementById(`dispute-row-${disputeId}`);
+    if (row) row.innerHTML = `<td colspan="6" class="py-2 text-red-400 text-xs">✗ Rejected: ${reason}</td>`;
+    setTimeout(() => loadPendingDisputeQueue(), 1500);
+  } catch (err) {
+    alert('Reject failed: ' + err.message);
+  }
+}
+
+async function loadSentDisputesDropdown() {
+  const sel = document.getElementById('recovery-dispute-select');
+  if (!sel) return;
+  try {
+    const stateResp = await fetch('/api/v1/test-ui/state');
+    const state = await stateResp.json();
+    const orgId = state.organization_id;
+    if (!orgId) return;
+    const resp = await fetch(`/api/v1/disputes?organization_id=${orgId}&status_filter=sent`);
+    const data = await resp.json();
+    sel.innerHTML = '<option value="">Select a sent dispute...</option>' +
+      (data.disputes || []).map(d =>
+        `<option value="${d.id}" data-org="${orgId}">${d.dispute_number} — ${d.carrier_name} ($${(d.disputed_amount||0).toFixed(2)})</option>`
+      ).join('');
+  } catch (err) {
+    console.error('Failed to load disputes:', err);
+  }
+}
+
+async function recordCarrierResponse() {
+  const sel = document.getElementById('recovery-dispute-select');
+  const disputeId = sel.value;
+  const orgId = sel.options[sel.selectedIndex]?.dataset?.org;
+  const responseType = document.getElementById('recovery-response-type').value;
+  const proofType = document.getElementById('recovery-proof-type').value;
+  const proofRef = document.getElementById('recovery-proof-ref').value;
+  const approvedAmt = document.getElementById('recovery-approved-amount').value;
+  const msgEl = document.getElementById('recovery-record-msg');
+
+  if (!disputeId || !responseType) {
+    msgEl.innerHTML = '<span class="text-red-400">Please select a dispute and response type.</span>';
+    return;
+  }
+
+  msgEl.innerHTML = '<span class="text-slate-400">Recording...</span>';
+
+  const payload = {
+    organization_id: orgId,
+    carrier_response_type: responseType,
+    proof_type: proofType || null,
+    proof_reference: proofRef || null,
+    approved_amount: approvedAmt && proofType ? parseFloat(approvedAmt) : null,
+    verified_by: proofType ? 'broker_ui' : null,
+  };
+
+  try {
+    const resp = await fetch(`/api/v1/disputes/${disputeId}/recovery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed');
+    const rec = data.recovery;
+    let msg = `✅ Recorded: ${responseType}`;
+    if (rec.approved_recovery) msg += ` | Recovery: <span class="text-emerald-400 font-bold">$${parseFloat(rec.approved_recovery).toFixed(2)}</span>`;
+    if (rec.revenue_share_amount) msg += ` | Platform Fee (15%): <span class="text-purple-400">$${parseFloat(rec.revenue_share_amount).toFixed(2)}</span>`;
+    msgEl.innerHTML = `<span class="text-emerald-300">${msg}</span>`;
+    loadRecoveryLedger();
+  } catch (err) {
+    msgEl.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`;
+  }
+}
+
+async function addCarrierContact() {
+  const stateResp = await fetch('/api/v1/test-ui/state');
+  const state = await stateResp.json();
+  const orgId = state.organization_id;
+  const carrier = document.getElementById('new-contact-carrier').value.trim();
+  const email = document.getElementById('new-contact-email').value.trim();
+  const name = document.getElementById('new-contact-name').value.trim();
+  const msgEl = document.getElementById('add-contact-msg');
+
+  if (!carrier || !email) {
+    msgEl.innerHTML = '<span class="text-red-400">Carrier name and billing email are required.</span>';
+    return;
+  }
+  if (!email.includes('@')) {
+    msgEl.innerHTML = '<span class="text-red-400">Please enter a valid email address.</span>';
+    return;
+  }
+
+  msgEl.innerHTML = '<span class="text-slate-400">Adding...</span>';
+  try {
+    const resp = await fetch('/api/v1/carrier-contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ organization_id: orgId, carrier_name: carrier, billing_email: email, contact_name: name || null })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed to add contact');
+    msgEl.innerHTML = `<span class="text-emerald-400">✅ Added: ${carrier} → ${email}</span>`;
+    document.getElementById('new-contact-carrier').value = '';
+    document.getElementById('new-contact-email').value = '';
+    document.getElementById('new-contact-name').value = '';
+    loadCarrierContacts();
+  } catch (err) {
+    msgEl.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`;
   }
 }
 
@@ -1047,6 +1405,22 @@ async function loadRecoveryLedger() {
           </div>
         </div>
 
+        <!-- PENDING APPROVAL QUEUE -->
+        <div class="bg-slate-900 border border-amber-900/50 rounded-xl p-4 shadow-sm mb-6">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="text-sm font-semibold text-white flex items-center">
+                <span class="text-base mr-2">📋</span> Pending Approval Queue
+              </h2>
+              <p class="text-xs text-slate-400 mt-0.5">Disputes waiting for your review — click Approve or Reject</p>
+            </div>
+            <button onclick="loadPendingDisputeQueue()" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700">↻ Refresh</button>
+          </div>
+          <div id="pending-disputes-list">
+            <div class="text-slate-500 text-xs italic">Click Refresh to load pending disputes.</div>
+          </div>
+        </div>
+
         <!-- Scenario Runner -->
         <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-5">
           <h3 class="text-base font-semibold text-white mb-4">🧪 Run Dispute Agent Simulation</h3>
@@ -1117,6 +1491,28 @@ async function loadRecoveryLedger() {
             <button onclick="loadCarrierContacts()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 transition">🔄 Refresh</button>
           </div>
           <div id="carrier-contacts-list" class="text-sm text-slate-400">Click Refresh to load contacts...</div>
+          <!-- ADD NEW CARRIER CONTACT -->
+          <div class="mt-4 border-t border-slate-800 pt-4">
+            <h4 class="text-xs font-semibold text-slate-300 mb-2 flex items-center"><span class="mr-1.5">➕</span> Add New Carrier Contact</h4>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+              <div>
+                <label class="text-slate-500 block mb-0.5">Carrier Name*</label>
+                <input id="new-contact-carrier" type="text" placeholder="e.g., Estes Express Lines" class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 focus:border-emerald-500 focus:outline-none text-xs" />
+              </div>
+              <div>
+                <label class="text-slate-500 block mb-0.5">Billing Email*</label>
+                <input id="new-contact-email" type="email" placeholder="billing@carrier.com" class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 focus:border-emerald-500 focus:outline-none text-xs" />
+              </div>
+              <div>
+                <label class="text-slate-500 block mb-0.5">Contact Name (optional)</label>
+                <input id="new-contact-name" type="text" placeholder="Billing Department" class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 focus:border-emerald-500 focus:outline-none text-xs" />
+              </div>
+            </div>
+            <div class="flex items-center space-x-3 mt-2">
+              <button onclick="addCarrierContact()" class="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition">➕ Add Contact</button>
+              <div id="add-contact-msg" class="text-xs min-h-[16px]"></div>
+            </div>
+          </div>
         </div>
 
         <!-- Recovery Ledger -->
@@ -1130,6 +1526,61 @@ async function loadRecoveryLedger() {
           </div>
           <div id="recovery-ledger-summary" class="hidden grid grid-cols-3 gap-3 mb-4"></div>
           <div id="recovery-ledger-list" class="text-sm text-slate-400">Click Refresh to load recovery ledger...</div>
+        </div>
+
+        <!-- RECORD CARRIER RESPONSE -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm mt-4">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h3 class="text-sm font-semibold text-white flex items-center">
+                <span class="text-base mr-2">📥</span> Record Carrier Response
+              </h3>
+              <p class="text-xs text-slate-400 mt-0.5">Enter what the carrier replied — this updates the recovery ledger</p>
+            </div>
+            <button onclick="loadSentDisputesDropdown()" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700">↻ Load Disputes</button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+            <div>
+              <label class="text-slate-400 block mb-1">Select Dispute</label>
+              <select id="recovery-dispute-select" class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 text-xs">
+                <option value="">Click "Load Disputes" first...</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-slate-400 block mb-1">Carrier Response</label>
+              <select id="recovery-response-type" class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 text-xs">
+                <option value="">Select response...</option>
+                <option value="accepted">✅ Accepted — full amount</option>
+                <option value="partially_accepted">🔶 Partially Accepted</option>
+                <option value="credit_issued">💳 Credit Memo Issued</option>
+                <option value="corrected_invoice_issued">📄 Corrected Invoice Issued</option>
+                <option value="rejected">❌ Rejected</option>
+                <option value="request_for_evidence">📋 Requested More Evidence</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-slate-400 block mb-1">Proof Type (required to verify recovery)</label>
+              <select id="recovery-proof-type" class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 text-xs">
+                <option value="">No proof yet</option>
+                <option value="credit_memo">Credit Memo</option>
+                <option value="corrected_invoice">Corrected Invoice</option>
+                <option value="ap_confirmation">AP System Confirmation</option>
+                <option value="human_broker_approval">Broker Manual Approval</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-slate-400 block mb-1">Proof Reference (e.g., CM-1234)</label>
+              <input id="recovery-proof-ref" type="text" placeholder="Credit memo # or invoice ref..." class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 text-xs" />
+            </div>
+            <div class="md:col-span-2">
+              <label class="text-slate-400 block mb-1">Approved Recovery Amount ($) — only if proof provided</label>
+              <input id="recovery-approved-amount" type="number" step="0.01" placeholder="e.g., 180.00" class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 text-xs" />
+            </div>
+          </div>
+          <button onclick="recordCarrierResponse()" class="mt-3 px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition w-full">
+            💾 Record Carrier Response & Update Ledger
+          </button>
+          <div id="recovery-record-msg" class="mt-2 text-xs min-h-[20px]"></div>
         </div>
 
       </div>
@@ -1218,7 +1669,7 @@ async function loadRecoveryLedger() {
       if (tab === 'conflicts') loadConflicts();
       if (tab === 'documents' && !document.getElementById('doc-content').value) loadSampleDoc('bol');
       if (tab === 'audit') loadAuditScenarios();
-      if (tab === 'dispute') { loadCarrierContacts(); loadRecoveryLedger(); }
+      if (tab === 'dispute') { loadCarrierContacts(); loadRecoveryLedger(); loadPendingDisputeQueue(); }
     }
 
     async function loadState() {
@@ -1433,10 +1884,20 @@ async function loadRecoveryLedger() {
       const decisionStep = document.getElementById('trace-step-decision');
       decisionStep.classList.remove('hidden');
       document.getElementById('confidence-badge').innerText = `Outcome: ${trace.terminal_outcome.toUpperCase()} (${Math.round((trace.confidence || 1) * 100)}%)`;
+      const outcome = (trace.terminal_outcome || '').toLowerCase();
+      const outcomeLabel = outcome === 'completed' ? '✅ Action taken automatically' :
+                           outcome === 'needs_human' ? '⚠️ Paused — waiting for your review' :
+                           outcome === 'failed' ? '❌ Agent failed — check logs' :
+                           `ℹ️ ${trace.terminal_outcome || 'Unknown'}`;
+      const outcomeColor = outcome === 'completed' ? 'text-emerald-300' :
+                           outcome === 'needs_human' ? 'text-amber-300' :
+                           outcome === 'failed' ? 'text-red-300' : 'text-slate-300';
+      const actionText = (trace.decision || '').replace(/agent_run:[a-z_]+\s*\([a-f0-9\-]{36}\)/g, '').trim()
+        || (outcome === 'needs_human' ? 'No matching shipment found — a human needs to review this email.' : 'Action completed.');
       document.getElementById('decision-details').innerHTML = `
-        <div class="font-medium text-white mb-1">Agent Action Proposal:</div>
-        <div class="text-slate-300">${trace.decision || 'No automated action triggered; human escalation.'}</div>
-        <div class="mt-2 text-[11px] text-slate-400">Approval State: <span class="text-indigo-300 uppercase font-semibold">${trace.approval_state}</span> | Prompt: Phase 2.6 Truth Guardrails</div>
+        <div class="font-medium ${outcomeColor} mb-1">${outcomeLabel}</div>
+        <div class="text-slate-300 mt-1">${actionText}</div>
+        <div class="mt-2 text-[11px] text-slate-500">Approval: <span class="text-indigo-300 font-semibold">${(trace.approval_state || '').replace(/_/g,' ')}</span></div>
       `;
 
       // 4. Tool Invocations
@@ -1444,13 +1905,28 @@ async function loadRecoveryLedger() {
       const toolsList = document.getElementById('tool-calls-list');
       toolsStep.classList.remove('hidden');
       if (trace.tool_calls && trace.tool_calls.length > 0) {
-        toolsList.innerHTML = trace.tool_calls.map(tc => `
-          <div class="bg-slate-900 border border-slate-800 rounded p-2 text-xs font-mono">
-            <div class="text-amber-400 font-bold mb-1">🛠️ ${tc.tool_name} <span class="text-[10px] text-slate-500">(${tc.execution_status || 'executed'})</span></div>
-            <div class="text-slate-400">Args: ${JSON.stringify(tc.input_parameters || {})}</div>
-            <div class="text-emerald-400 mt-1">Result: ${JSON.stringify(tc.output_result || {})}</div>
-          </div>
-        `).join('');
+        toolsList.innerHTML = trace.tool_calls.map(tc => {
+          const params = tc.input_parameters || {};
+          const result = tc.output_result || {};
+          const toolLabel = (tc.tool_name || '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          const statusOk = (tc.execution_status || 'executed') !== 'failed';
+          let paramSummary = '';
+          if (params.field && params.value !== undefined) {
+            paramSummary = `Updated <span class="text-white font-semibold">${params.field}</span> → <span class="text-emerald-400">${params.value}</span>`;
+          } else if (params.status) {
+            paramSummary = `Status set to <span class="text-emerald-400 font-semibold">${params.status}</span>`;
+          } else {
+            const keys = Object.keys(params).slice(0, 3);
+            paramSummary = keys.map(k => `${k}: <span class="text-slate-200">${JSON.stringify(params[k]).slice(0,40)}</span>`).join(' | ') || 'No parameters';
+          }
+          return `<div class="bg-slate-900 border ${statusOk ? 'border-amber-900/40' : 'border-red-900/40'} rounded p-2.5 text-xs">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-amber-400 font-semibold">🛠️ ${toolLabel}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded ${statusOk ? 'bg-emerald-950 text-emerald-400' : 'bg-red-950 text-red-400'}">${statusOk ? '✓ executed' : '✗ failed'}</span>
+            </div>
+            <div class="text-slate-400">${paramSummary}</div>
+          </div>`;
+        }).join('');
       } else {
         toolsList.innerHTML = `<div class="text-xs text-slate-500 italic">No tool calls executed (action halted for human review).</div>`;
       }
@@ -1476,10 +1952,15 @@ async function loadRecoveryLedger() {
       const auditStep = document.getElementById('trace-step-audit');
       auditStep.classList.remove('hidden');
       if (trace.audit_log) {
-        document.getElementById('audit-idempotency-badge').innerText = `Key: ${trace.audit_log.idempotency_key ? trace.audit_log.idempotency_key.slice(0, 16) + '...' : 'N/A'}`;
+        const auditTime = trace.audit_log.timestamp ? new Date(trace.audit_log.timestamp).toLocaleTimeString() : 'unknown time';
+        const actionTaken = (trace.audit_log.action_taken || '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()).replace(/Agent Run:/i, '').trim();
+        document.getElementById('audit-idempotency-badge').innerText = `Logged at ${auditTime}`;
         document.getElementById('audit-content').innerHTML = `
-          <div>Action: <strong class="text-white">${trace.audit_log.action_taken}</strong> (${trace.audit_log.event_type})</div>
-          <div>Actor: ${trace.audit_log.actor_type} [${trace.audit_log.actor_id || 'agent'}] | Timestamp: ${trace.audit_log.timestamp}</div>
+          <div class="flex items-center space-x-2">
+            <span class="text-purple-400">📌</span>
+            <span class="text-slate-200 font-medium">${actionTaken || 'Action recorded'}</span>
+          </div>
+          <div class="text-slate-500 mt-1">By: ${trace.audit_log.actor_type || 'agent'} · ${auditTime}</div>
         `;
       } else {
         document.getElementById('audit-content').innerHTML = `<div>Run ID: ${trace.run_id} recorded in agent_runs table.</div>`;

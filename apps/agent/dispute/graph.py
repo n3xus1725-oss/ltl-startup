@@ -388,14 +388,29 @@ def build_dispute_graph(db: Session, llm: LLMGateway) -> Any:
             dispute_repo.set_dispute_letter(dispute.id, state["dispute_letter_subject"], state["dispute_letter_text"])
             dispute_repo.update_approval_status(dispute.id, "auto_approved")
 
-            # Simulate email send
-            logger.info(
-                "[DISPUTE EMAIL SIMULATED] To: %s | Dispute: %s | Amount: $%.2f",
-                state["recipient_email"],
-                state["dispute_number"],
-                state["disputed_amount"],
+            # Send dispute email — real or simulated based on DISPUTE_EMAIL_ENABLED setting
+            from packages.tools.dispute_email import send_dispute_email
+            email_result = send_dispute_email(
+                to_email=state["recipient_email"],
+                subject=state["dispute_letter_subject"],
+                body=state["dispute_letter_text"],
+                dispute_number=state["dispute_number"],
             )
-            dispute_repo.mark_dispute_sent(dispute.id)
+
+            if email_result.success:
+                logger.info(
+                    "[DISPUTE] Email %s to %s | method=%s | dispute=%s",
+                    "sent" if email_result.method != "simulated" else "queued (simulated)",
+                    state["recipient_email"],
+                    email_result.method,
+                    state["dispute_number"],
+                )
+                dispute_repo.mark_dispute_sent(dispute.id)
+            else:
+                logger.error("[DISPUTE] Email send failed: %s", email_result.error)
+                dispute_repo.update_dispute_status(dispute.id, "pending_approval")
+                dispute_repo.update_approval_status(dispute.id, "requires_human_approval")
+
 
             # Create recovery ledger entry (approved_recovery=NULL until proof)
             recovery_number = generate_recovery_number(state["dispute_number"])

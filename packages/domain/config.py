@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     GMAIL_REFRESH_TOKEN: Optional[str] = Field(default=None)
     MOCK_EMAIL_CONNECTOR: bool = Field(default=True, description="Use test/mock mailbox connector for tests/local dev")
 
+    # Email dispatch settings for dispute sending
+    SMTP_HOST: Optional[str] = Field(default=None, description="SMTP server hostname")
+    SMTP_PORT: int = Field(default=587, description="SMTP server port")
+    SMTP_USER: Optional[str] = Field(default=None, description="SMTP username/email")
+    SMTP_PASSWORD: Optional[str] = Field(default=None, description="SMTP password")
+    DISPUTE_SENDER_EMAIL: Optional[str] = Field(default=None, description="From address for dispute emails")
+    DISPUTE_EMAIL_ENABLED: bool = Field(default=False, description="Master switch - must be True to send real emails")
+
     @field_validator("API_PORT", mode="before")
     @classmethod
     def parse_api_port(cls, v):
@@ -80,6 +88,11 @@ class Settings(BaseSettings):
         "GMAIL_CLIENT_ID",
         "GMAIL_CLIENT_SECRET",
         "GMAIL_REFRESH_TOKEN",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USER",
+        "SMTP_PASSWORD",
+        "DISPUTE_SENDER_EMAIL",
         mode="before",
     )
     @classmethod
