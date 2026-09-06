@@ -9,9 +9,27 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     env:
+      # Runtime environment — use SQLite in-memory for CI (no Supabase needed)
       ENVIRONMENT: test
+      DATABASE_URL: "sqlite:///./ci_test.db"
       MOCK_EMAIL_CONNECTOR: "true"
+      # Prevent LiteLLM / LangGraph from making real API calls
+      OPENAI_API_KEY: "sk-test-ci-placeholder"
+      ANTHROPIC_API_KEY: "sk-ant-ci-placeholder"
+      LITELLM_MODEL: "gpt-4o-mini"
+      # Prevent psycopg2/psycopg from trying to connect to real Postgres
+      SUPABASE_URL: "http://localhost:54321"
+      SUPABASE_ANON_KEY: "ci-placeholder-key"
+      SUPABASE_SERVICE_ROLE_KEY: "ci-placeholder-service-key"
+      # Email connector mock
+      IMAP_HOST: "localhost"
+      IMAP_USER: "test@test.com"
+      IMAP_PASSWORD: "test"
+      SMTP_HOST: "localhost"
+      SMTP_USER: "test@test.com"
+      SMTP_PASSWORD: "test"
 
     steps:
       - name: Checkout Code
@@ -35,4 +53,4 @@ jobs:
 
       - name: Run Pytest Test Suite
         run: |
-          pytest -v --tb=short
+          pytest -v --tb=short -x
