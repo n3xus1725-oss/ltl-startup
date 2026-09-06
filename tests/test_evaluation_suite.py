@@ -39,6 +39,10 @@ def eval_org(eval_db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    os.getenv("OPENAI_API_KEY", "").startswith("sk-test") or os.getenv("ENVIRONMENT") == "test",
+    reason="Full 110-email evaluation suite requires real LLM API keys and shouldn't run in basic CI."
+)
 async def test_full_evaluation_pipeline_110_emails(eval_db, eval_org):
     """Run full 110-email benchmark across 50 normal, 20 ambiguous,
     20 irrelevant, and 20 conflicting emails.
