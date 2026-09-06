@@ -8,6 +8,8 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from packages.storage.credentials_crypto import encrypt_credentials
+
 from apps.agent.inbox.service import InboxAgentService
 from apps.agent.inbox.validators import InboxAgentInput
 from packages.connectors.gmail import GmailConnector
@@ -84,7 +86,23 @@ async def gmail_oauth_callback(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing authorization code")
 
     settings = get_settings()
-    org_id = uuid.UUID(state) if state else _get_org(db).id
+    
+    org_id = None
+    if state:
+        try:
+            candidate_id = uuid.UUID(state)
+            org = db.query(Organization).filter(Organization.id == candidate_id).first()
+            if org:
+                org_id = candidate_id
+            else:
+                logger.error(f"OAuth callback: state UUID {state} does not match any organization. Rejecting.")
+                return RedirectResponse(url="/dashboard?oauth_error=invalid_state")
+        except ValueError:
+            logger.error(f"OAuth callback: state parameter is not a valid UUID: {state!r}")
+            return RedirectResponse(url="/dashboard?oauth_error=invalid_state")
+    else:
+        org_id = _get_org(db).id
+
     redirect_uri = f"https://ltl-startup-dusky.vercel.app{settings.API_V1_PREFIX}/connectors/gmail/oauth/callback"
 
     try:
@@ -102,7 +120,7 @@ async def gmail_oauth_callback(
             email_address=email_addr,
             provider="gmail",
             status="active",
-            credentials=token_data,
+            credentials=encrypt_credentials(token_data),
         )
         logger.info(f"Successfully connected Gmail inbox for {email_addr}")
         return RedirectResponse(url=f"/dashboard?gmail=connected&email={email_addr}")

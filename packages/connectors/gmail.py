@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from sqlalchemy.orm import Session
 
+from packages.storage.credentials_crypto import decrypt_credentials
 from packages.domain.config import get_settings
 from packages.domain.logging import logger
 from packages.domain.models import InboxConnection
@@ -151,7 +152,7 @@ class GmailConnector(BaseEmailConnector):
                 InboxConnection.organization_id == self.organization_id,
             ).first()
             if conn and conn.credentials_encrypted:
-                return dict(conn.credentials_encrypted)
+                return decrypt_credentials(dict(conn.credentials_encrypted))
 
         creds = {}
         if settings.GMAIL_CLIENT_ID:

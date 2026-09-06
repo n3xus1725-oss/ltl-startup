@@ -133,12 +133,13 @@ def _send_via_smtp(
         )
         return EmailSendResult(success=True, method="smtp", message_id=message_id)
 
-    except smtplib.SMTPAuthenticationError as e:
-        logger.error("[DISPUTE EMAIL] SMTP auth failed: %s", e)
-        return EmailSendResult(success=False, method="smtp", error=f"SMTP authentication failed: {e}")
+    except smtplib.SMTPAuthenticationError:
+        logger.error("[DISPUTE EMAIL] SMTP authentication failed — check SMTP_USER and SMTP_PASSWORD credentials.")
+        return EmailSendResult(success=False, method="smtp", error="SMTP authentication failed — check credentials in environment config.")
     except smtplib.SMTPException as e:
-        logger.error("[DISPUTE EMAIL] SMTP error: %s", e)
-        return EmailSendResult(success=False, method="smtp", error=f"SMTP error: {e}")
+        safe_error = str(e).split('\n')[0][:100]  # Only first line, max 100 chars
+        logger.error("[DISPUTE EMAIL] SMTP error: %s", safe_error)
+        return EmailSendResult(success=False, method="smtp", error=f"SMTP error: {safe_error}")
     except Exception as e:
-        logger.error("[DISPUTE EMAIL] Unexpected error: %s", e)
-        return EmailSendResult(success=False, method="smtp", error=str(e))
+        logger.error("[DISPUTE EMAIL] Unexpected send error (type: %s)", type(e).__name__)
+        return EmailSendResult(success=False, method="smtp", error=f"Unexpected error during email send: {type(e).__name__}")

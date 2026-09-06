@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     DB_PASSWORD: Optional[str] = Field(default=None)
     DB_NAME: Optional[str] = Field(default=None)
 
+    # Cryptography
+    CREDENTIALS_ENCRYPTION_KEY: Optional[str] = Field(default=None, description="32-byte base64 Fernet key for encrypting stored OAuth credentials. Generate with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'")
+
     # LLM Settings
     OPENAI_API_KEY: Optional[str] = Field(default=None)
     LITELLM_API_KEY: Optional[str] = Field(default=None)

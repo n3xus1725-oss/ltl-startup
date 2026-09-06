@@ -8,7 +8,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from packages.storage.db import get_db
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/carrier-contacts", tags=["Carrier Contacts"])
 class CreateCarrierContactRequest(BaseModel):
     organization_id: str = Field(..., description="Organization UUID")
     carrier_name: str = Field(..., description="Carrier name (must match carrier_name in invoices)")
-    billing_email: str = Field(..., description="Verified carrier billing email — the ONLY source for dispute recipients")
+    billing_email: EmailStr = Field(..., description="Verified carrier billing email — the ONLY source for dispute recipients")
     contact_name: Optional[str] = Field(default=None)
     phone: Optional[str] = Field(default=None)
     notes: Optional[str] = Field(default=None)
