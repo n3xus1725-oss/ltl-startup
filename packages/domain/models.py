@@ -36,6 +36,7 @@ class Organization(Base):
     name = Column(String(255), nullable=False)
     slug = Column(String(100), unique=True, nullable=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    auto_dispute_threshold_usd = Column(Numeric(12, 2), nullable=False, default=250.00)
     created_at = Column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now(), nullable=False)
 
@@ -480,4 +481,110 @@ class AuditFindingRecord(Base):
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now(), nullable=False)
 
     invoice = relationship("CarrierInvoice", back_populates="audit_findings")
+
+
+class CarrierContact(Base):
+    """Verified carrier billing contact registry — the ONLY source for dispute recipient emails."""
+    __tablename__ = "carrier_contacts"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    carrier_name = Column(String(255), nullable=False, index=True)
+    billing_email = Column(String(255), nullable=False)  # THE ONLY ALLOWED DISPUTE RECIPIENT
+    contact_name = Column(String(255), nullable=True)
+    phone = Column(String(50), nullable=True)
+    notes = Column(Text, nullable=True)
+    is_verified = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "carrier_name", "billing_email", name="uq_carrier_contacts_org_carrier_email"),
+    )
+
+
+class CarrierDispute(Base):
+    """Carrier billing dispute record. disputed_amount MUST come from AuditFindingRecord.discrepancy_amount — never from LLM."""
+    __tablename__ = "carrier_disputes"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    dispute_number = Column(String(100), nullable=False, index=True)  # e.g. DSP-5821-01
+    invoice_id = Column(Uuid(as_uuid=True), ForeignKey("carrier_invoices.id", ondelete="RESTRICT"), nullable=False, index=True)
+    shipment_id = Column(Uuid(as_uuid=True), ForeignKey("shipments.id", ondelete="SET NULL"), nullable=True, index=True)
+    audit_finding_ids = Column(JSON, nullable=False, default=list)  # list of AuditFindingRecord UUIDs
+    carrier_name = Column(String(255), nullable=False)
+    # Financial fields — ALL must be copied from AuditFindingRecord, NEVER set by LLM
+    disputed_amount = Column(Numeric(12, 2), nullable=False)  # sum of discrepancy_amounts
+    expected_amount = Column(Numeric(12, 2), nullable=True)
+    billed_amount = Column(Numeric(12, 2), nullable=True)
+    # Recipient — MUST come from CarrierContact DB record, NEVER guessed
+    recipient_email = Column(String(255), nullable=True)  # NULL until verified contact resolved
+    recipient_contact_name = Column(String(255), nullable=True)
+    # Dispute letter — LLM-drafted subject/body; financial data injected by deterministic code
+    dispute_letter_subject = Column(String(500), nullable=True)
+    dispute_letter_text = Column(Text, nullable=True)
+    # Status flow: draft -> pending_approval -> sent -> acknowledged -> resolved | rejected | cancelled
+    status = Column(String(50), nullable=False, default="draft", index=True)
+    # Approval: auto_approved | requires_human_approval | human_approved | human_rejected
+    approval_status = Column(String(50), nullable=False, default="pending")
+    auto_dispute_threshold_usd = Column(Numeric(12, 2), nullable=False, default=250.00)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    carrier_response_text = Column(Text, nullable=True)
+    # accepted | partially_accepted | rejected | request_for_evidence | corrected_invoice_issued | credit_issued | unclear
+    carrier_response_classification = Column(String(100), nullable=True)
+    agent_run_id = Column(Uuid(as_uuid=True), ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    idempotency_key = Column(String(255), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now(), nullable=False)
+
+    invoice = relationship("CarrierInvoice")
+    shipment = relationship("Shipment")
+    recovery = relationship("DisputeRecovery", back_populates="dispute", uselist=False)
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "idempotency_key", name="uq_disputes_org_idemp"),
+        UniqueConstraint("organization_id", "dispute_number", name="uq_disputes_org_number"),
+    )
+
+
+class DisputeRecovery(Base):
+    """Immutable verified recovery ledger. approved_recovery CANNOT be set without documented proof.
+    Platform 15% success fee can ONLY be billed against verified entries."""
+    __tablename__ = "dispute_recoveries"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    recovery_number = Column(String(100), nullable=False, index=True)  # e.g. REC-5821-01
+    dispute_id = Column(Uuid(as_uuid=True), ForeignKey("carrier_disputes.id", ondelete="RESTRICT"), nullable=False, index=True)
+    invoice_id = Column(Uuid(as_uuid=True), ForeignKey("carrier_invoices.id", ondelete="RESTRICT"), nullable=False, index=True)
+    original_invoice_amount = Column(Numeric(12, 2), nullable=True)
+    disputed_amount = Column(Numeric(12, 2), nullable=False)  # copied from CarrierDispute
+    # Carrier response — required before any recovery can be recorded
+    carrier_response_type = Column(String(100), nullable=True)  # accepted | partially_accepted | credit_issued | corrected_invoice_issued | rejected
+    # Recovery — NULL until verified proof is on file. GUARD: RecoveryRepository.verify_and_mark_recovered() checks proof first
+    approved_recovery = Column(Numeric(12, 2), nullable=True)  # NULL until proven
+    # Proof — at least one must be present before approved_recovery can be set
+    proof_type = Column(String(100), nullable=True)  # credit_memo | corrected_invoice | ap_confirmation | human_broker_approval
+    proof_document_id = Column(Uuid(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
+    proof_reference = Column(String(255), nullable=True)  # credit memo number, etc.
+    customer_confirmation_user_id = Column(String(255), nullable=True)
+    customer_confirmation_at = Column(DateTime(timezone=True), nullable=True)
+    # Revenue share — computed only when verified
+    revenue_share_percentage = Column(Numeric(6, 4), nullable=False, default=0.1500)
+    revenue_share_amount = Column(Numeric(12, 2), nullable=True)  # NULL until verified
+    platform_invoice_id = Column(String(255), nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)  # NULL until verified
+    verified_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now(), nullable=False)
+
+    dispute = relationship("CarrierDispute", back_populates="recovery")
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "dispute_id", name="uq_recoveries_org_dispute"),
+        UniqueConstraint("organization_id", "recovery_number", name="uq_recoveries_org_number"),
+    )
 
