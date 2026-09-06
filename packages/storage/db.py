@@ -42,16 +42,22 @@ Base = declarative_base()
 _sqlite_tables_created = False
 
 
+def init_db() -> None:
+    """Ensure database schema tables are created."""
+    try:
+        from packages.domain import models  # noqa: F401
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database schema verified/created successfully.")
+    except Exception as e:
+        logger.warning(f"Database schema initialization skipped or failed: {e}")
+
+
 def _ensure_sqlite_tables() -> None:
     """Ensure in-memory SQLite database has tables initialized when running without external migration."""
     global _sqlite_tables_created
     if not _sqlite_tables_created and "sqlite" in db_url:
-        try:
-            from packages.domain import models  # noqa: F401
-            Base.metadata.create_all(bind=engine)
-            _sqlite_tables_created = True
-        except Exception as e:
-            logger.warning(f"Could not auto-create SQLite tables: {e}")
+        init_db()
+        _sqlite_tables_created = True
 
 
 def get_db() -> Generator[Session, None, None]:

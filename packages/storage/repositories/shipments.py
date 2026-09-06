@@ -151,3 +151,98 @@ class ShipmentRepository(BaseRepository[Shipment]):
             .order_by(ShipmentEvent.event_timestamp.asc())
         )
         return list(self.db.execute(stmt).scalars().all())
+
+    def get_canonical(self, organization_id: uuid.UUID, shipment_id: uuid.UUID) -> Optional[Dict[str, Any]]:
+        """Retrieve the canonical structured shipment representation."""
+        shipment = self.get_by_id(organization_id, shipment_id)
+        if not shipment:
+            return None
+        if shipment.canonical_data:
+            return dict(shipment.canonical_data)
+
+        # Build baseline canonical representation from relational columns
+        return {
+            "shipment_id": str(shipment.id),
+            "organization_id": str(shipment.organization_id),
+            "shipment_number": shipment.shipment_number,
+            "status": shipment.status,
+            "carrier": {
+                "carrier_name": shipment.carrier_name,
+                "carrier_ref": shipment.carrier_reference,
+            },
+            "locations": {
+                "origin": shipment.origin_address or {},
+                "destination": shipment.destination_address or {},
+                "stops": [],
+            },
+            "dates": {
+                "pickup_date": shipment.pickup_date.isoformat() if shipment.pickup_date else None,
+                "delivery_date": shipment.delivery_date.isoformat() if shipment.delivery_date else None,
+                "eta": shipment.eta.isoformat() if shipment.eta else None,
+            },
+            "freight_details": {
+                "total_weight_lbs": shipment.weight_lbs,
+                "pallet_count": shipment.pallet_count,
+            },
+            "pricing": {
+                "agreed_total": float(shipment.total_charges) if shipment.total_charges is not None else None,
+            },
+            "billing_references": {
+                "load_id": shipment.load_id,
+                "bol_number": shipment.bol_number,
+                "pro_number": shipment.carrier_reference,
+                "invoice_id": shipment.external_invoice_id,
+            },
+        }
+
+    def update_canonical(
+        self,
+        organization_id: uuid.UUID,
+        shipment_id: uuid.UUID,
+        canonical_data: Dict[str, Any],
+        provenance_ledger: Optional[Dict[str, Any]] = None,
+        sync_flat_columns: bool = True,
+    ) -> Optional[Shipment]:
+        """Update canonical shipment state, provenance ledger, and synchronize flat database fields."""
+        shipment = self.get_by_id(organization_id, shipment_id)
+        if not shipment:
+            return None
+
+        shipment.canonical_data = canonical_data
+        if provenance_ledger is not None:
+            shipment.provenance_ledger = provenance_ledger
+
+        if sync_flat_columns:
+            # Sync key top-level columns from canonical data
+            if "status" in canonical_data and canonical_data["status"]:
+                shipment.status = canonical_data["status"]
+
+            freight = canonical_data.get("freight_details") or {}
+            if "total_weight_lbs" in freight and freight["total_weight_lbs"] is not None:
+                shipment.weight_lbs = float(freight["total_weight_lbs"])
+            if "pallet_count" in freight and freight["pallet_count"] is not None:
+                shipment.pallet_count = int(freight["pallet_count"])
+
+            pricing = canonical_data.get("pricing") or {}
+            if "agreed_total" in pricing and pricing["agreed_total"] is not None:
+                shipment.total_charges = pricing["agreed_total"]
+            elif "billed_total" in pricing and pricing["billed_total"] is not None:
+                shipment.total_charges = pricing["billed_total"]
+
+            carrier = canonical_data.get("carrier") or {}
+            if "carrier_name" in carrier and carrier["carrier_name"]:
+                shipment.carrier_name = carrier["carrier_name"]
+            if "scac" in carrier and carrier["scac"]:
+                shipment.carrier_reference = carrier["scac"]
+
+            refs = canonical_data.get("billing_references") or {}
+            if "bol_number" in refs and refs["bol_number"]:
+                shipment.bol_number = refs["bol_number"]
+            if "load_id" in refs and refs["load_id"]:
+                shipment.load_id = refs["load_id"]
+            if "invoice_id" in refs and refs["invoice_id"]:
+                shipment.external_invoice_id = refs["invoice_id"]
+
+        self.db.commit()
+        self.db.refresh(shipment)
+        return shipment

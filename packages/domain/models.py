@@ -43,6 +43,7 @@ class Organization(Base):
     users = relationship("User", back_populates="organization", cascade="all, delete-orphan")
     shipments = relationship("Shipment", back_populates="organization", cascade="all, delete-orphan")
     inbox_connections = relationship("InboxConnection", back_populates="organization", cascade="all, delete-orphan")
+    conflicts = relationship("ShipmentConflict", back_populates="organization", cascade="all, delete-orphan")
 
 
 class User(Base):
@@ -109,6 +110,8 @@ class Shipment(Base):
     pallet_count = Column(Integer, nullable=True)
     total_charges = Column(Numeric(12, 2), nullable=True)
     metadata_payload = Column(JSON, nullable=True)
+    canonical_data = Column(JSON, nullable=True)
+    provenance_ledger = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now(), nullable=False)
 
@@ -118,6 +121,7 @@ class Shipment(Base):
     messages = relationship("Message", back_populates="shipment")
     exceptions = relationship("ExceptionRecord", back_populates="shipment")
     tasks = relationship("TaskRecord", back_populates="shipment")
+    conflicts = relationship("ShipmentConflict", back_populates="shipment", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("organization_id", "shipment_number", name="uq_shipments_org_shipment_number"),
@@ -351,3 +355,34 @@ class AuditLog(Base):
     __table_args__ = (
         UniqueConstraint("organization_id", "idempotency_key", name="uq_audit_log_org_idemp"),
     )
+
+
+class ShipmentConflict(Base):
+    """Detected truth discrepancy between different sources."""
+    __tablename__ = "shipment_conflicts"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    shipment_id = Column(Uuid(as_uuid=True), ForeignKey("shipments.id", ondelete="CASCADE"), nullable=False, index=True)
+    field_name = Column(String(100), nullable=False, index=True)
+    conflict_type = Column(String(50), nullable=False)  # value_mismatch, missing_evidence, stale_value, incompatible_status, conflicting_party_identity
+    source_a = Column(JSON, nullable=False)  # {source, source_id, value, authority, timestamp}
+    source_b = Column(JSON, nullable=False)  # {source, source_id, value, authority, timestamp}
+    severity = Column(String(20), nullable=False, default="medium")  # low, medium, high, critical
+    explanation = Column(Text, nullable=False)
+    recommended_workflow = Column(String(100), nullable=False)  # rate_dispute_agent, reweigh_verification, operator_review, carrier_inquiry
+    status = Column(String(50), nullable=False, default="open")  # open, resolved, dismissed
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_by = Column(String(255), nullable=True)
+    resolved_value = Column(JSON, nullable=True)
+    idempotency_key = Column(String(255), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now(), nullable=False)
+
+    organization = relationship("Organization", back_populates="conflicts")
+    shipment = relationship("Shipment", back_populates="conflicts")
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "shipment_id", "field_name", "idempotency_key", name="uq_conflicts_org_shp_field_idemp"),
+    )
+

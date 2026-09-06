@@ -16,7 +16,9 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from apps.api.api.v1.conflicts import router as conflicts_router
 from apps.api.api.v1.connectors import router as connectors_router
+from apps.api.api.v1.documents import router as documents_router
 from apps.api.api.v1.events import router as events_v1_router
 from apps.api.api.v1.test_ui import router as test_ui_router
 from packages.domain.config import get_settings
@@ -45,6 +47,11 @@ _dashboard_html = _load_dashboard_html()
 async def lifespan(app: FastAPI):
     """Application lifecycle management."""
     logger.info("Starting AI Freight Execution Platform API", extra={"environment": settings.ENVIRONMENT})
+    try:
+        from packages.storage.db import init_db
+        init_db()
+    except Exception as e:
+        logger.warning(f"Lifespan DB initialization notice: {e}")
     yield
     logger.info("Shutting down AI Freight Execution Platform API")
 
@@ -96,6 +103,8 @@ async def correlation_id_middleware(request: Request, call_next):
 app.include_router(events_v1_router, prefix=settings.API_V1_PREFIX)
 app.include_router(connectors_router, prefix=settings.API_V1_PREFIX)
 app.include_router(test_ui_router, prefix=settings.API_V1_PREFIX)
+app.include_router(documents_router, prefix=settings.API_V1_PREFIX)
+app.include_router(conflicts_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/", tags=["Root"])
