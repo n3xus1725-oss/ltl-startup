@@ -75,8 +75,11 @@ class RateContractRepository(BaseRepository[RateContract]):
         origin_state: Optional[str] = None,
         dest_state: Optional[str] = None,
         target_date: Optional[datetime] = None,
+        destination_state: Optional[str] = None,
+        **kwargs,
     ) -> Optional[RateContract]:
         """Find the most specific active contract for a carrier, lane, and effective date."""
+        dest_state = dest_state or destination_state
         check_date = target_date or datetime.now(timezone.utc)
 
         stmt = select(RateContract).where(

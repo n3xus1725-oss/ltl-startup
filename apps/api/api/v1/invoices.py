@@ -347,3 +347,91 @@ def get_invoice_findings(
         }
         for f in findings
     ]
+
+
+@router.post("/{invoice_id}/agent-audit")
+async def run_invoice_agent_audit(
+    invoice_id: str,
+    force_reasoning_model: bool = Query(False),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Execute LangGraph Billing Audit Agent on stored invoice (Phase 3.4 - 3.6)."""
+    from apps.agent.audit.service import run_audit_agent
+
+    inv_repo = InvoiceRepository(db)
+    inv = inv_repo.get_by_invoice_id(uuid.UUID(invoice_id))
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    output = await run_audit_agent(
+        organization_id=str(inv.organization_id),
+        db=db,
+        invoice_id=str(inv.id),
+        carrier_name=inv.carrier_name,
+        invoice_number=inv.invoice_number,
+        force_reasoning_model=force_reasoning_model,
+        trigger_event_id=f"evt-agent-audit-{inv.id}",
+    )
+    return output.model_dump()
+
+
+class BatchAuditRequest(BaseModel):
+    carrier_name: Optional[str] = None
+    status: Optional[str] = None
+    limit: int = 50
+    force_reasoning_model: bool = False
+
+
+@router.post("/audit-batch")
+async def audit_batch_invoices(
+    payload: BatchAuditRequest,
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Phase 3 Exit Criteria: Audit historical invoices in bulk using the LangGraph Audit Agent."""
+    from apps.agent.audit.service import run_audit_agent
+
+    organization = db.query(Organization).filter_by(id=uuid.UUID(org_id)).first() if org_id else _get_or_create_default_org(db)
+    inv_repo = InvoiceRepository(db)
+    invoices = inv_repo.list_invoices(
+        organization_id=organization.id,
+        carrier_name=payload.carrier_name,
+        status=payload.status,
+        limit=payload.limit,
+    )
+
+    results = []
+    clean_count = 0
+    discrepancy_count = 0
+    total_discrepancy = 0.0
+    total_cost_usd = 0.0
+
+    for inv in invoices:
+        res = await run_audit_agent(
+            organization_id=str(organization.id),
+            db=db,
+            invoice_id=str(inv.id),
+            carrier_name=inv.carrier_name,
+            invoice_number=inv.invoice_number,
+            force_reasoning_model=payload.force_reasoning_model,
+            trigger_event_id=f"evt-batch-{inv.id}",
+        )
+        results.append(res.model_dump())
+        if res.is_clean:
+            clean_count += 1
+        else:
+            discrepancy_count += 1
+            total_discrepancy += res.total_discrepancy
+        total_cost_usd += res.cost_estimate
+
+    return {
+        "organization_id": str(organization.id),
+        "total_audited": len(results),
+        "clean_count": clean_count,
+        "discrepancy_count": discrepancy_count,
+        "total_discrepancy_amount": round(total_discrepancy, 2),
+        "total_cost_usd": round(total_cost_usd, 6),
+        "average_cost_per_invoice_usd": round(total_cost_usd / max(len(results), 1), 6),
+        "results": results,
+    }
+

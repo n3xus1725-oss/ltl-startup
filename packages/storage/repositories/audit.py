@@ -75,3 +75,27 @@ class AuditLogRepository(BaseRepository[AuditLog]):
             .order_by(AuditLog.created_at.desc())
         )
         return list(self.db.execute(stmt).scalars().all())
+
+    def create_entry(
+        self,
+        organization_id: uuid.UUID,
+        entity_type: str,
+        entity_id: Any,
+        event_type: str,
+        action_taken: str,
+        actor_id: str,
+        actor_type: str = "agent",
+        metadata: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> AuditLog:
+        return self.record(
+            organization_id=organization_id,
+            event_id=f"evt-{uuid.uuid4().hex[:8]}",
+            action=action_taken,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            target_entity_type=entity_type,
+            target_entity_id=str(entity_id),
+            metadata_json=metadata,
+        )
+

@@ -126,6 +126,7 @@ class InvoiceRepository(BaseRepository[CarrierInvoice]):
         self,
         organization_id: uuid.UUID,
         shipment_id: Optional[uuid.UUID] = None,
+        carrier_name: Optional[str] = None,
         status: Optional[str] = None,
         limit: int = 50,
     ) -> List[CarrierInvoice]:
@@ -133,6 +134,8 @@ class InvoiceRepository(BaseRepository[CarrierInvoice]):
         stmt = select(CarrierInvoice).where(CarrierInvoice.organization_id == organization_id)
         if shipment_id:
             stmt = stmt.where(CarrierInvoice.shipment_id == shipment_id)
+        if carrier_name:
+            stmt = stmt.where(CarrierInvoice.carrier_name.ilike(f"%{carrier_name}%"))
         if status:
             stmt = stmt.where(CarrierInvoice.status == status)
         stmt = stmt.order_by(CarrierInvoice.created_at.desc()).limit(limit)

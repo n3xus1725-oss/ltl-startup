@@ -129,3 +129,104 @@ def test_billing_audit_simulation_api(client):
     assert sim_data["total_discrepancy"] >= 200.00
     finding_rules = [f["rule_id"] for f in sim_data["report"]["findings"]]
     assert "RULE_02_LINEHAUL_MISMATCH" in finding_rules
+
+
+def test_batch_audit_and_agent_audit_api(client):
+    """Test single invoice agent audit and bulk historical batch audit."""
+    # 0. Seed baseline shipment LOAD-9001 and contract
+    client.post(
+        "/api/v1/test-ui/billing-audit/simulate",
+        json={"scenario_id": "scenario-clean"},
+    )
+
+    # 1. Ingest clean invoice
+    clean_text = """CARRIER FREIGHT INVOICE
+    Carrier: Estes Express Lines
+    Invoice #: INV-BATCH-CLEAN
+    Load #: 9001
+    Linehaul Rate: $1,650.00
+    Fuel Surcharge: $247.50
+    Total Due: $1,897.50
+    Weight: 16,450 lbs
+    Class: 70
+    Pallets: 12
+    """
+    res_clean = client.post(
+        "/api/v1/invoices/ingest",
+        json={"document_text": clean_text, "carrier_name": "Estes Express Lines", "invoice_number": "INV-BATCH-CLEAN"},
+    )
+    assert res_clean.status_code == 201
+    clean_id = res_clean.json()["invoice_id"]
+
+    # 2. Ingest overcharge invoice
+    over_text = """CARRIER FREIGHT INVOICE
+    Carrier: Estes Express Lines
+    Invoice #: INV-BATCH-OVER
+    Load #: 9001
+    Linehaul Rate: $1,950.00
+    Fuel Surcharge: $300.00
+    Total Due: $2,250.00
+    """
+    res_over = client.post(
+        "/api/v1/invoices/ingest",
+        json={"document_text": over_text, "carrier_name": "Estes Express Lines", "invoice_number": "INV-BATCH-OVER"},
+    )
+    assert res_over.status_code == 201
+    assert "invoice_id" in res_over.json()
+
+    # 3. Create baseline contract so audit rules can evaluate
+    client.post("/api/v1/contracts", json={
+        "carrier_name": "Estes Express Lines",
+        "contract_number": "CTR-ESTES-BATCH",
+        "base_rate": 1650.00,
+        "minimum_charge": 500.00,
+        "rate_type": "flat",
+        "fuel_schedule": {"type": "percent", "base_rate_percent": 15.0},
+    })
+
+    # 4. Agent audit on clean invoice (Zero Cost Bypass verification)
+    res_agent = client.post(f"/api/v1/invoices/{clean_id}/agent-audit")
+    assert res_agent.status_code == 200
+    clean_agent_data = res_agent.json()
+    assert clean_agent_data["is_clean"] is True
+    assert clean_agent_data["cost_estimate"] == 0.0
+    assert clean_agent_data["next_workflow"] == "payment_scheduled"
+    assert clean_agent_data["approval_state"] == "auto_approved"
+
+    # 5. Bulk batch audit across all historical invoices (Exit Criteria)
+    res_batch = client.post("/api/v1/invoices/audit-batch", json={"carrier_name": "Estes Express Lines", "limit": 20})
+    assert res_batch.status_code == 200
+    batch_data = res_batch.json()
+    assert batch_data["total_audited"] >= 2
+    assert "clean_count" in batch_data
+    assert "discrepancy_count" in batch_data
+    assert "total_cost_usd" in batch_data
+    assert "average_cost_per_invoice_usd" in batch_data
+
+
+def test_billing_audit_run_agent_simulation_api(client):
+    """Test full LangGraph Billing Audit Agent execution via the testing UI endpoint."""
+    # Run clean scenario
+    res_clean = client.post(
+        "/api/v1/test-ui/billing-audit/run-agent",
+        json={"scenario_id": "scenario-clean"},
+    )
+    assert res_clean.status_code == 200
+    clean_data = res_clean.json()
+    assert clean_data["is_clean"] is True
+    assert clean_data["cost_estimate"] == 0.0
+    assert clean_data["next_workflow"] == "payment_scheduled"
+    assert len(clean_data["trajectory"]) >= 6
+
+    # Run linehaul overcharge scenario
+    res_over = client.post(
+        "/api/v1/test-ui/billing-audit/run-agent",
+        json={"scenario_id": "scenario-linehaul"},
+    )
+    assert res_over.status_code == 200
+    over_data = res_over.json()
+    assert over_data["is_clean"] is False
+    assert over_data["total_discrepancy"] >= 200.00
+    assert over_data["next_workflow"] == "dispute_review"
+    assert over_data["explanation"] is not None
+    assert len(over_data["trajectory"]) >= 6

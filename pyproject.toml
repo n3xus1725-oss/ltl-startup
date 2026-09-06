@@ -33,7 +33,7 @@ dev = [
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["tests", "apps/agent/inbox/tests"]
+testpaths = ["tests", "apps/agent/inbox/tests", "apps/agent/audit/tests"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
 pythonpath = [

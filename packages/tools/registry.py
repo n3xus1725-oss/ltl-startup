@@ -246,3 +246,6 @@ class ToolRegistry:
                 latency_ms=latency,
                 idempotency_key=idemp_key,
             )
+
+    dispatch = execute
+

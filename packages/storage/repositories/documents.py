@@ -68,3 +68,5 @@ class DocumentRepository(BaseRepository[Document]):
             .order_by(Document.created_at.desc())
         )
         return list(self.db.execute(stmt).scalars().all())
+
+    list_for_shipment = list_by_shipment

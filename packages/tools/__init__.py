@@ -1,5 +1,14 @@
 """Tools package exposing BaseTool, ToolRegistry, and standard shipment/email tools."""
 
+from packages.tools.audit_tools import (
+    ApproveInvoiceTool,
+    FindMatchingContractTool,
+    FlagDisputeTool,
+    GetInvoiceTool,
+    GetShipmentDocumentsTool,
+    RecordAuditFindingsTool,
+    register_audit_tools,
+)
 from packages.tools.registry import (
     BaseTool,
     ToolContext,
@@ -36,4 +45,12 @@ __all__ = [
     "ReplyToThreadTool",
     "CreateExceptionTool",
     "create_standard_tool_registry",
+    "GetInvoiceTool",
+    "FindMatchingContractTool",
+    "GetShipmentDocumentsTool",
+    "RecordAuditFindingsTool",
+    "ApproveInvoiceTool",
+    "FlagDisputeTool",
+    "register_audit_tools",
 ]
+

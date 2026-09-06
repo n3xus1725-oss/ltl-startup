@@ -24,7 +24,7 @@ class AuditFindingRepository(BaseRepository[AuditFindingRecord]):
         rule_name: str,
         severity: str,
         reason: str,
-        discrepancy_amount: float,
+        discrepancy_amount: Optional[float] = None,
         expected_value: Optional[Any] = None,
         billed_value: Optional[Any] = None,
         shipment_id: Optional[uuid.UUID] = None,
@@ -32,8 +32,19 @@ class AuditFindingRepository(BaseRepository[AuditFindingRecord]):
         evidence: Optional[Dict[str, Any]] = None,
         recommended_action: Optional[str] = None,
         status: str = "open",
+        difference: Optional[float] = None,
+        source_documents: Optional[List[str]] = None,
+        evidence_references: Optional[List[Dict[str, Any]]] = None,
+        **kwargs,
     ) -> AuditFindingRecord:
         """Create and persist an audit discrepancy finding."""
+        final_diff = discrepancy_amount if discrepancy_amount is not None else (difference or 0.0)
+        ev = evidence or {}
+        if source_documents:
+            ev["source_documents"] = source_documents
+        if evidence_references:
+            ev["evidence_references"] = evidence_references
+
         finding = AuditFindingRecord(
             organization_id=organization_id,
             invoice_id=invoice_id,
@@ -42,11 +53,11 @@ class AuditFindingRepository(BaseRepository[AuditFindingRecord]):
             rule_name=rule_name,
             severity=severity,
             reason=reason,
-            discrepancy_amount=discrepancy_amount,
+            discrepancy_amount=final_diff,
             expected_value=expected_value,
             billed_value=billed_value,
             confidence=confidence,
-            evidence=evidence or {},
+            evidence=ev,
             recommended_action=recommended_action,
             status=status,
         )

@@ -1048,3 +1048,123 @@ def simulate_billing_audit(
         "total_discrepancy": report.total_discrepancy_amount,
         "findings_count": len(report.findings),
     }
+
+
+class RunAuditAgentRequest(BaseModel):
+    scenario_id: Optional[str] = "scenario-clean"
+    custom_text: Optional[str] = None
+    force_reasoning_model: bool = False
+
+
+@router.post("/billing-audit/run-agent")
+async def run_billing_audit_agent(
+    payload: RunAuditAgentRequest,
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Execute full LangGraph Billing Audit Agent with trajectory tracing and cost observability."""
+    from apps.agent.audit.service import run_audit_agent
+    from packages.storage.repositories.contracts import RateContractRepository
+    from packages.storage.repositories.invoices import InvoiceRepository
+    from packages.storage.repositories.shipments import ShipmentRepository
+
+    org = get_or_create_test_org(db)
+    shp_repo = ShipmentRepository(db)
+    contract_repo = RateContractRepository(db)
+    inv_repo = InvoiceRepository(db)
+
+    # 1. Match Scenario
+    scenario = next((s for s in BILLING_AUDIT_SCENARIOS if s["id"] == payload.scenario_id), BILLING_AUDIT_SCENARIOS[0])
+    text_to_audit = payload.custom_text or scenario["invoice_text"]
+
+    # 2. Ensure baseline Rate Contract exists
+    contract = contract_repo.find_matching_contract(org.id, "Estes Express")
+    if not contract:
+        contract = contract_repo.create_contract(
+            organization_id=org.id,
+            carrier_name="Estes Express Lines",
+            contract_number="CTR-ESTES-2026",
+            base_rate=1650.0,
+            minimum_charge=500.0,
+            rate_type="flat",
+            fuel_schedule={"type": "percent", "base_rate_percent": 15.0},
+            accessorial_schedule={
+                "DETENTION": {"rate_per_hour": 75.0, "free_hours": 2},
+                "LIFTGATE": {"flat": 100.0},
+                "RESIDENTIAL": {"flat": 85.0},
+            },
+        )
+
+    # 3. Ensure baseline Shipment LOAD-9001 exists
+    shp = shp_repo.get_by_shipment_number(org.id, "LOAD-9001")
+    if not shp:
+        shp = shp_repo.create(
+            organization_id=org.id,
+            shipment_number="LOAD-9001",
+            load_id="9001",
+            status="delivered",
+            total_charges=1897.50,
+        )
+        shp_repo.update_canonical(
+            org.id,
+            shp.id,
+            canonical_data={
+                "organization_id": str(org.id),
+                "shipment_number": "LOAD-9001",
+                "status": "delivered",
+                "pricing": {
+                    "agreed_linehaul": 1650.0,
+                    "fuel_surcharge": 247.50,
+                    "agreed_total": 1897.50,
+                },
+                "freight_details": {
+                    "total_weight_lbs": 16450.0,
+                    "pallet_count": 12,
+                    "freight_class": "70",
+                },
+            },
+            provenance_ledger={"entries": {}},
+        )
+
+    # 4. Duplicate invoice scenario: ensure prior paid invoice exists in DB
+    if payload.scenario_id == "scenario-duplicate":
+        prior_inv = inv_repo.get_by_number(org.id, "Estes Express Lines", "INV-DUP-999")
+        if not prior_inv:
+            prior_inv = inv_repo.create_invoice(
+                organization_id=org.id,
+                carrier_name="Estes Express Lines",
+                invoice_number="INV-DUP-999",
+                total_billed_amount=1650.0,
+                status="paid",
+            )
+
+    # 5. Execute LangGraph Audit Agent
+    trigger_id = f"evt-agent-test-{uuid.uuid4().hex[:8]}"
+    output = await run_audit_agent(
+        organization_id=str(org.id),
+        db=db,
+        invoice_text=text_to_audit,
+        carrier_name=scenario.get("carrier") or "Estes Express Lines",
+        invoice_number=scenario.get("invoice_number"),
+        trigger_event_id=trigger_id,
+        force_reasoning_model=payload.force_reasoning_model,
+    )
+
+    return {
+        "scenario_id": scenario["id"],
+        "scenario_title": scenario["title"],
+        "agent_output": output.model_dump(),
+        "trajectory": output.trajectory,
+        "is_clean": output.is_clean,
+        "total_discrepancy": output.total_discrepancy,
+        "findings_count": output.findings_count,
+        "findings": output.findings,
+        "classification": output.classification,
+        "next_workflow": output.next_workflow,
+        "approval_state": output.approval_state,
+        "decision": output.decision,
+        "explanation": output.explanation,
+        "model_used": output.model_used,
+        "total_tokens": output.total_tokens,
+        "cost_estimate": output.cost_estimate,
+        "run_id": output.run_id,
+    }

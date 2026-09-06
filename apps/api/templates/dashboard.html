@@ -504,8 +504,20 @@
               </div>
             </div>
 
-            <button onclick="runAuditSimulation()" id="btn-run-audit" class="mt-4 w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-md shadow-emerald-950 flex items-center justify-center space-x-1.5">
-              <span>⚡ Run Deterministic Billing Audit</span>
+            <!-- Force Reasoning Model Option (Phase 3.6) -->
+            <div class="mt-3 flex items-center space-x-2 bg-slate-950/70 p-2.5 rounded-lg border border-slate-800">
+              <input type="checkbox" id="force-reasoning-checkbox" class="rounded bg-slate-900 border-slate-700 text-indigo-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer">
+              <label for="force-reasoning-checkbox" class="text-[11px] text-slate-300 cursor-pointer">
+                Force Reasoning Model (<code class="text-indigo-300">gpt-4o</code>) for Multi-Doc Conflict
+              </label>
+            </div>
+
+            <!-- Action Buttons -->
+            <button onclick="runFullAuditAgent()" id="btn-run-agent-audit" class="mt-3 w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition shadow-md shadow-indigo-950 flex items-center justify-center space-x-1.5">
+              <span>🤖 Run Full LangGraph Audit Agent (Phases 3.4–3.6)</span>
+            </button>
+            <button onclick="runAuditSimulation()" id="btn-run-audit" class="mt-2 w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition border border-slate-700 flex items-center justify-center space-x-1.5">
+              <span>⚡ Evaluate Deterministic Rules Only (Phase 3.1–3.3)</span>
             </button>
           </div>
         </div>
@@ -517,7 +529,7 @@
             <div id="audit-status-card" class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
               <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Audit Verdict</span>
               <div id="audit-verdict-text" class="text-sm font-bold text-slate-400 mt-1">Pending Run</div>
-              <span id="audit-verdict-sub" class="text-[10px] text-slate-500 mt-0.5">Click run audit</span>
+              <span id="audit-verdict-sub" class="text-[10px] text-slate-500 mt-0.5">Click run agent</span>
             </div>
             <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
               <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Discrepancy Overcharge</span>
@@ -531,18 +543,51 @@
             </div>
           </div>
 
-          <!-- Structured Findings Table -->
+          <!-- Phase 3.6 Cost Observability & Workflow Routing Bar -->
+          <div id="audit-agent-routing-bar" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col space-y-2.5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="text-xs font-semibold text-white">Agent Route:</span>
+                <span id="audit-route-badge" class="px-2 py-0.5 rounded text-xs font-mono font-bold bg-indigo-950 text-indigo-300 border border-indigo-800">
+                  payment_scheduled
+                </span>
+                <span id="audit-approval-badge" class="px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-800">
+                  auto_approved
+                </span>
+              </div>
+              <div id="audit-cost-badge" class="px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                💰 LLM Bypassed: $0.0000 (0 tokens)
+              </div>
+            </div>
+            <div id="audit-explanation-box" class="text-xs text-slate-300 bg-slate-950 p-3 rounded-lg border border-slate-800 leading-relaxed font-sans">
+            </div>
+          </div>
+
+          <!-- Structured Findings & Trajectory View Container -->
           <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex-1 flex flex-col">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
-              <h3 class="text-xs font-semibold text-white flex items-center">
-                <span class="mr-1.5">⚖️</span> Structured Evidence Findings Ledger:
-              </h3>
+              <div class="flex items-center space-x-2">
+                <button onclick="switchAuditView('trajectory')" id="tab-btn-audit-trajectory" class="px-3 py-1 rounded text-xs bg-indigo-600 text-white font-semibold transition">
+                  🤖 Agent Trajectory Trace (8 Nodes)
+                </button>
+                <button onclick="switchAuditView('findings')" id="tab-btn-audit-findings" class="px-3 py-1 rounded text-xs text-slate-400 hover:text-white transition">
+                  ⚖️ Evidence Findings Ledger
+                </button>
+              </div>
               <span class="text-[10px] text-slate-400 font-mono" id="audit-timestamp">Ready</span>
             </div>
 
-            <div id="audit-findings-container" class="space-y-3 flex-1 overflow-y-auto max-h-[520px]">
+            <!-- View 1: Agent Trajectory Trace -->
+            <div id="audit-trajectory-container" class="space-y-3 flex-1 overflow-y-auto max-h-[520px]">
               <div class="text-xs text-slate-500 py-16 text-center border border-dashed border-slate-800 rounded-lg">
-                Select a scenario and click <strong class="text-emerald-400">"Run Deterministic Billing Audit"</strong> to inspect financial rule evidence.
+                Click <strong class="text-indigo-400">"Run Full LangGraph Audit Agent"</strong> to observe autonomous entity resolution, contract matching, deterministic math evaluation, cost-optimized AI explanation, and workflow dispatch.
+              </div>
+            </div>
+
+            <!-- View 2: Deterministic Evidence Findings Ledger -->
+            <div id="audit-findings-container" class="hidden space-y-3 flex-1 overflow-y-auto max-h-[520px]">
+              <div class="text-xs text-slate-500 py-16 text-center border border-dashed border-slate-800 rounded-lg">
+                Select a scenario and run audit to inspect structured financial rule evidence.
               </div>
             </div>
           </div>
@@ -1372,6 +1417,223 @@ Received in good order and condition.`
       document.getElementById('audit-invoice-text').value = (scenario.invoice_text || '').trim();
     }
 
+    function switchAuditView(view) {
+      const trajCont = document.getElementById('audit-trajectory-container');
+      const findCont = document.getElementById('audit-findings-container');
+      const btnTraj = document.getElementById('tab-btn-audit-trajectory');
+      const btnFind = document.getElementById('tab-btn-audit-findings');
+
+      if (view === 'trajectory') {
+        trajCont.classList.remove('hidden');
+        findCont.classList.add('hidden');
+        btnTraj.className = 'px-3 py-1 rounded text-xs bg-indigo-600 text-white font-semibold transition';
+        btnFind.className = 'px-3 py-1 rounded text-xs text-slate-400 hover:text-white transition';
+      } else {
+        trajCont.classList.add('hidden');
+        findCont.classList.remove('hidden');
+        btnFind.className = 'px-3 py-1 rounded text-xs bg-indigo-600 text-white font-semibold transition';
+        btnTraj.className = 'px-3 py-1 rounded text-xs text-slate-400 hover:text-white transition';
+      }
+    }
+
+    async function runFullAuditAgent() {
+      const btn = document.getElementById('btn-run-agent-audit');
+      const select = document.getElementById('audit-scenario-select');
+      const invoiceText = document.getElementById('audit-invoice-text').value;
+      const forceReasoning = document.getElementById('force-reasoning-checkbox').checked;
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="animate-spin mr-1">⟳</span> Orchestrating LangGraph Audit Workflow (8 Nodes)...';
+
+      try {
+        const res = await fetch('/api/v1/test-ui/billing-audit/run-agent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scenario_id: select.value,
+            custom_text: invoiceText,
+            force_reasoning_model: forceReasoning
+          })
+        });
+        const data = await res.json();
+        renderAgentAuditResults(data);
+        switchAuditView('trajectory');
+        refreshTables();
+      } catch (err) {
+        alert("Billing Audit Agent execution error: " + err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>🤖 Run Full LangGraph Audit Agent (Phases 3.4–3.6)</span>';
+      }
+    }
+
+    function renderAgentAuditResults(data) {
+      const card = document.getElementById('audit-status-card');
+      const verdictText = document.getElementById('audit-verdict-text');
+      const verdictSub = document.getElementById('audit-verdict-sub');
+      const discEl = document.getElementById('audit-discrepancy-amount');
+      const countEl = document.getElementById('audit-findings-count');
+      const tsEl = document.getElementById('audit-timestamp');
+      const routingBar = document.getElementById('audit-agent-routing-bar');
+      const routeBadge = document.getElementById('audit-route-badge');
+      const approvalBadge = document.getElementById('audit-approval-badge');
+      const costBadge = document.getElementById('audit-cost-badge');
+      const explanationBox = document.getElementById('audit-explanation-box');
+      const trajContainer = document.getElementById('audit-trajectory-container');
+
+      tsEl.innerText = new Date().toLocaleTimeString();
+      routingBar.classList.remove('hidden');
+
+      // 1. Metric Cards & Verdict
+      if (data.is_clean) {
+        card.className = 'bg-emerald-950/40 border border-emerald-800 rounded-xl p-3.5 flex flex-col justify-between';
+        verdictText.innerText = '✓ AUTO-APPROVED';
+        verdictText.className = 'text-sm font-bold text-emerald-400 mt-1';
+        verdictSub.innerText = 'All 10 rules passed (0.00% variance)';
+        discEl.innerText = '$0.00';
+        discEl.className = 'text-lg font-bold text-emerald-400 font-mono mt-1';
+        countEl.innerText = '0';
+        countEl.className = 'text-lg font-bold text-emerald-400 font-mono mt-1';
+      } else {
+        card.className = 'bg-red-950/40 border border-red-800 rounded-xl p-3.5 flex flex-col justify-between';
+        verdictText.innerText = '⚠️ ACTION DISPATCHED';
+        verdictText.className = 'text-sm font-bold text-red-400 mt-1';
+        verdictSub.innerText = data.classification || 'Discrepancies Flagged';
+        discEl.innerText = '$' + (data.total_discrepancy || 0).toFixed(2);
+        discEl.className = 'text-lg font-bold text-red-400 font-mono mt-1';
+        countEl.innerText = '' + data.findings_count;
+        countEl.className = 'text-lg font-bold text-red-400 font-mono mt-1';
+      }
+
+      // 2. Route, Approval & Cost Badges (Phase 3.6 Observability)
+      routeBadge.innerText = data.next_workflow || 'payment_scheduled';
+      routeBadge.className = `px-2 py-0.5 rounded text-xs font-mono font-bold ${
+        data.next_workflow === 'payment_scheduled' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+        data.next_workflow === 'dispute_review' ? 'bg-red-950 text-red-300 border border-red-800' :
+        'bg-amber-950 text-amber-300 border border-amber-800'
+      }`;
+
+      approvalBadge.innerText = data.approval_state || 'auto_approved';
+      approvalBadge.className = `px-2 py-0.5 rounded text-[11px] font-mono ${
+        data.approval_state === 'auto_approved' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+        data.approval_state === 'dispute_flagged' ? 'bg-red-950 text-red-300 border border-red-800' :
+        'bg-amber-950 text-amber-300 border border-amber-800'
+      }`;
+
+      const cost = data.cost_estimate || 0.0;
+      const tokens = data.total_tokens || 0;
+      if (cost === 0 && tokens === 0) {
+        costBadge.className = 'px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800';
+        costBadge.innerHTML = '💰 Phase 3.6 Zero-Cost Bypass: $0.0000 (0 tokens)';
+      } else {
+        costBadge.className = 'px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-indigo-950 text-indigo-300 border border-indigo-800';
+        costBadge.innerHTML = `🤖 Model: <span class="text-white">${data.model_used || 'default'}</span> | <span class="text-emerald-400">${tokens} tok</span> | <span class="text-white">$${cost.toFixed(6)}</span>`;
+      }
+
+      // 3. AI Explanation & Discrepancy Citations
+      explanationBox.innerHTML = `
+        <div class="flex items-center space-x-2 text-[11px] font-bold text-slate-400 mb-1">
+          <span>🧠 AI Decision & Discrepancy Explanation (Quality Gate):</span>
+        </div>
+        <div class="text-slate-200">${data.explanation || 'No explanation generated.'}</div>
+      `;
+
+      // 4. Render Node-by-Node Trajectory
+      const steps = data.trajectory || [];
+      const nodeIcons = {
+        ingest: '📥',
+        identify_shipment: '🚚',
+        gather_evidence: '📂',
+        run_deterministic_rules: '⚖️',
+        classify_result: '🏷️',
+        explain_discrepancies: '🧠',
+        decide_next_workflow: '⚙️',
+        persist_results: '💾'
+      };
+
+      trajContainer.innerHTML = steps.map((s, idx) => {
+        const isBypassed = s.status === 'bypassed';
+        const isAmbiguous = s.status === 'ambiguous';
+        const isFailed = s.status === 'failed';
+        const statusClass = isBypassed ? 'bg-slate-800 text-slate-400 border-slate-700' :
+          isAmbiguous ? 'bg-amber-950 text-amber-300 border-amber-800' :
+          isFailed ? 'bg-red-950 text-red-300 border-red-800' :
+          'bg-emerald-950 text-emerald-300 border-emerald-800';
+
+        return `
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="text-base">${nodeIcons[s.node] || '⚡'}</span>
+                <span class="text-xs font-bold text-white font-mono">Node ${idx + 1}: ${s.node}</span>
+              </div>
+              <span class="text-[10px] px-2 py-0.5 rounded uppercase font-mono border ${statusClass}">
+                ${s.status}
+              </span>
+            </div>
+            <div class="text-xs text-slate-300 ml-6 leading-relaxed">${s.summary}</div>
+            ${s.details && Object.keys(s.details).length > 0 ? `
+              <div class="ml-6 p-2 rounded bg-slate-900 border border-slate-800/80 text-[11px] font-mono text-slate-400">
+                ${Object.entries(s.details).map(([k, v]) => `
+                  <div><span class="text-slate-500">${k}:</span> <strong class="text-slate-200">${typeof v === 'object' ? JSON.stringify(v) : v}</strong></div>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+
+      // Also render findings ledger so user can toggle
+      renderAuditFindingsLedger(data.findings || []);
+    }
+
+    function renderAuditFindingsLedger(findings) {
+      const container = document.getElementById('audit-findings-container');
+      if (!findings || findings.length === 0) {
+        container.innerHTML = `
+          <div class="bg-emerald-950/20 border border-emerald-800/80 rounded-lg p-6 text-center space-y-2">
+            <div class="text-3xl">✅</div>
+            <div class="text-sm font-semibold text-emerald-300">Clean Invoice - All 10 Deterministic Audit Rules Passed</div>
+            <div class="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">
+              Linehaul rate ($1,650.00), fuel surcharge (15% = $247.50), verified scale weight (16,450 lbs), NMFC class (70), pallet count (12), and line-item math sum identically match agreed rate contract (CTR-ESTES-2026) and delivery receipts within 0.00% variance.
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = findings.map(f => {
+        const isCritical = f.severity === 'critical';
+        const isHigh = f.severity === 'high';
+        const badgeClass = isCritical
+          ? 'bg-red-950 text-red-300 border-red-800'
+          : isHigh
+            ? 'bg-amber-950 text-amber-300 border-amber-800'
+            : 'bg-slate-800 text-slate-300 border-slate-700';
+
+        return `
+          <div class="bg-slate-950 border border-red-900/60 rounded-lg p-3.5 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="text-xs font-mono font-bold text-red-400">${f.rule_id}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded border uppercase font-mono ${badgeClass}">${f.severity}</span>
+              </div>
+              ${f.difference != null && Math.abs(f.difference) > 0 ? `<span class="text-xs font-mono font-bold text-red-400">Variance: +$${Math.abs(f.difference).toFixed(2)}</span>` : ''}
+            </div>
+            <div class="text-xs text-slate-200 font-medium">${f.reason}</div>
+            <div class="grid grid-cols-2 gap-2 bg-slate-900 border border-slate-800 rounded p-2 text-[11px] font-mono">
+              <div><span class="text-slate-500">Expected:</span> <span class="text-emerald-400">${typeof f.expected_value === 'object' ? JSON.stringify(f.expected_value) : f.expected_value}</span></div>
+              <div><span class="text-slate-500">Billed:</span> <span class="text-red-400">${typeof f.billed_value === 'object' ? JSON.stringify(f.billed_value) : f.billed_value}</span></div>
+            </div>
+            <div class="flex items-center justify-between text-[10px] text-slate-500">
+              <div>Source Docs: <span class="text-slate-400">${(f.source_documents || []).join(', ') || 'N/A'}</span></div>
+              <div>Confidence: <span class="text-emerald-400 font-mono">${Math.round((f.confidence || 1.0) * 100)}% (Rule 22 Code Arithmetic)</span></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
     async function runAuditSimulation() {
       const btn = document.getElementById('btn-run-audit');
       const select = document.getElementById('audit-scenario-select');
@@ -1391,12 +1653,13 @@ Received in good order and condition.`
         });
         const data = await res.json();
         renderAuditResults(data);
+        switchAuditView('findings');
         refreshTables();
       } catch (err) {
         alert("Billing audit simulation error: " + err);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<span>⚡ Run Deterministic Billing Audit</span>';
+        btn.innerHTML = '<span>⚡ Evaluate Deterministic Rules Only (Phase 3.1–3.3)</span>';
       }
     }
 
@@ -1407,9 +1670,10 @@ Received in good order and condition.`
       const discEl = document.getElementById('audit-discrepancy-amount');
       const countEl = document.getElementById('audit-findings-count');
       const tsEl = document.getElementById('audit-timestamp');
-      const container = document.getElementById('audit-findings-container');
+      const routingBar = document.getElementById('audit-agent-routing-bar');
 
       tsEl.innerText = new Date().toLocaleTimeString();
+      routingBar.classList.add('hidden');
 
       if (data.is_clean) {
         card.className = 'bg-emerald-950/40 border border-emerald-800 rounded-xl p-3.5 flex flex-col justify-between';
@@ -1420,19 +1684,6 @@ Received in good order and condition.`
         discEl.className = 'text-lg font-bold text-emerald-400 font-mono mt-1';
         countEl.innerText = '0';
         countEl.className = 'text-lg font-bold text-emerald-400 font-mono mt-1';
-
-        container.innerHTML = `
-          <div class="bg-emerald-950/20 border border-emerald-800/80 rounded-lg p-6 text-center space-y-2">
-            <div class="text-3xl">✅</div>
-            <div class="text-sm font-semibold text-emerald-300">Clean Invoice - All 10 Deterministic Audit Rules Passed</div>
-            <div class="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">
-              Linehaul rate ($1,650.00), fuel surcharge (15% = $247.50), verified scale weight (16,450 lbs), NMFC class (70), pallet count (12), and line-item math sum identically match agreed rate contract (CTR-ESTES-2026) and delivery receipts within 0.00% variance.
-            </div>
-            <div class="inline-block mt-2 px-3 py-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-[11px] font-mono">
-              Status: Ready for Payment Scheduling
-            </div>
-          </div>
-        `;
       } else {
         card.className = 'bg-red-950/40 border border-red-800 rounded-xl p-3.5 flex flex-col justify-between';
         verdictText.innerText = '⚠️ DISCREPANCIES FLAGGED';
@@ -1442,39 +1693,9 @@ Received in good order and condition.`
         discEl.className = 'text-lg font-bold text-red-400 font-mono mt-1';
         countEl.innerText = '' + data.findings_count;
         countEl.className = 'text-lg font-bold text-red-400 font-mono mt-1';
-
-        const findings = data.report?.findings || [];
-        container.innerHTML = findings.map(f => {
-          const isCritical = f.severity === 'critical';
-          const isHigh = f.severity === 'high';
-          const badgeClass = isCritical
-            ? 'bg-red-950 text-red-300 border-red-800'
-            : isHigh
-              ? 'bg-amber-950 text-amber-300 border-amber-800'
-              : 'bg-slate-800 text-slate-300 border-slate-700';
-
-          return `
-            <div class="bg-slate-950 border border-red-900/60 rounded-lg p-3.5 space-y-2.5">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-2">
-                  <span class="text-xs font-mono font-bold text-red-400">${f.rule_id}</span>
-                  <span class="text-[10px] px-2 py-0.5 rounded border uppercase font-mono ${badgeClass}">${f.severity}</span>
-                </div>
-                ${f.difference != null && Math.abs(f.difference) > 0 ? `<span class="text-xs font-mono font-bold text-red-400">Variance: +$${Math.abs(f.difference).toFixed(2)}</span>` : ''}
-              </div>
-              <div class="text-xs text-slate-200 font-medium">${f.reason}</div>
-              <div class="grid grid-cols-2 gap-2 bg-slate-900 border border-slate-800 rounded p-2 text-[11px] font-mono">
-                <div><span class="text-slate-500">Expected:</span> <span class="text-emerald-400">${typeof f.expected_value === 'object' ? JSON.stringify(f.expected_value) : f.expected_value}</span></div>
-                <div><span class="text-slate-500">Billed:</span> <span class="text-red-400">${typeof f.billed_value === 'object' ? JSON.stringify(f.billed_value) : f.billed_value}</span></div>
-              </div>
-              <div class="flex items-center justify-between text-[10px] text-slate-500">
-                <div>Source Docs: <span class="text-slate-400">${(f.source_documents || []).join(', ') || 'N/A'}</span></div>
-                <div>Confidence: <span class="text-emerald-400 font-mono">100% (Rule 22 Code Arithmetic)</span></div>
-              </div>
-            </div>
-          `;
-        }).join('');
       }
+
+      renderAuditFindingsLedger(data.report?.findings || []);
     }
 
     // ---------------- BOTTOM EXPLORER ----------------
