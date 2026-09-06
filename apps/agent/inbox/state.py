@@ -17,6 +17,8 @@ class InboxAgentState(TypedDict, total=False):
     subject: Optional[str]
     body: Optional[str]
     raw_payload: Optional[Dict[str, Any]]
+    attachments: List[Dict[str, Any]]
+    associated_documents: List[Dict[str, Any]]
 
     # Resolution & Context
     resolver_result: Optional[Dict[str, Any]]

@@ -18,6 +18,7 @@ class InboxAgentInput(BaseModel):
     subject: str = Field(default="", description="Email subject line")
     body_text: str = Field(default="", description="Email text body")
     raw_metadata: Optional[Dict[str, Any]] = Field(default=None, description="Optional headers/attachments metadata")
+    attachments: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Attached documents metadata and IDs")
 
 
 class IntentClassificationOutput(BaseModel):

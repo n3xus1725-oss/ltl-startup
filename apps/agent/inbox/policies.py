@@ -85,6 +85,14 @@ def evaluate_action_policy(
             requires_human_task=True,
         )
 
+    # Unknown shipment: candidate identifier extracted from email but not found in database
+    if intent == "unknown_shipment":
+        return PolicyDecision(
+            approval_state="needs_human",
+            reason="Referenced freight identifier was not found in database; requires operator review",
+            requires_human_task=True,
+        )
+
     # Rule 9: Confidence threshold check
     if confidence < AUTO_APPROVE_CONFIDENCE_THRESHOLD:
         return PolicyDecision(
@@ -195,6 +203,14 @@ def evaluate_action_policy(
         return PolicyDecision(
             approval_state="auto_approved",
             reason="Missing-information workflow automatically initiates standardized request and creates follow-up task",
+            requires_human_task=False,
+        )
+
+    # Document attachment (BOL / POD / Rate Con)
+    if intent in ("document_attached", "pod_received", "bol_received") or proposed_tool == "attach_document":
+        return PolicyDecision(
+            approval_state="auto_approved",
+            reason="Document association for verified shipment auto-approved",
             requires_human_task=False,
         )
 

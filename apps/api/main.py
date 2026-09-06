@@ -16,6 +16,7 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from apps.api.api.v1.connectors import router as connectors_router
 from apps.api.api.v1.events import router as events_v1_router
 from apps.api.api.v1.test_ui import router as test_ui_router
 from packages.domain.config import get_settings
@@ -93,6 +94,7 @@ async def correlation_id_middleware(request: Request, call_next):
 
 # Include API Routers
 app.include_router(events_v1_router, prefix=settings.API_V1_PREFIX)
+app.include_router(connectors_router, prefix=settings.API_V1_PREFIX)
 app.include_router(test_ui_router, prefix=settings.API_V1_PREFIX)
 
 

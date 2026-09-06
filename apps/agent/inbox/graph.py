@@ -36,6 +36,7 @@ from packages.domain.resolver import ShipmentResolver
 from packages.llm.gateway import LLMGateway
 from packages.storage.repositories.agent_runs import AgentRunRepository
 from packages.storage.repositories.audit import AuditLogRepository
+from packages.storage.repositories.documents import DocumentRepository
 from packages.storage.repositories.messages import MessageRepository
 from packages.storage.repositories.shipments import ShipmentRepository
 from packages.storage.repositories.tasks import TaskRepository
@@ -53,6 +54,7 @@ def build_inbox_agent_graph(
 
     shipment_repo = ShipmentRepository(db)
     message_repo = MessageRepository(db)
+    doc_repo = DocumentRepository(db)
     task_repo = TaskRepository(db)
     agent_repo = AgentRunRepository(db)
     audit_repo = AuditLogRepository(db)
@@ -60,12 +62,54 @@ def build_inbox_agent_graph(
 
     # ---------------- Node 1: Ingest ---------------- #
     async def node_ingest(state: InboxAgentState) -> Dict[str, Any]:
-        """Normalize inbound payload and initialize run state."""
+        """Normalize inbound payload, register attachments, and initialize run state."""
+        import hashlib
         org_id = state.get("organization_id")
         run_id = state.get("run_id") or str(uuid.uuid4())
         started_at = state.get("started_at") or datetime.now(timezone.utc).isoformat()
 
-        logger.info(f"Ingesting event for org {org_id}, run {run_id}")
+        # Ingest/register any incoming attachments in DocumentRepository
+        raw_atts = state.get("attachments") or []
+        registered_docs = []
+        for att in raw_atts:
+            doc_id = att.get("document_id") or att.get("id")
+            if doc_id:
+                try:
+                    existing_doc = doc_repo.get_by_id(uuid.UUID(org_id), uuid.UUID(doc_id))
+                    if existing_doc:
+                        registered_docs.append({
+                            "id": str(existing_doc.id),
+                            "document_id": str(existing_doc.id),
+                            "filename": existing_doc.file_name,
+                            "document_type": existing_doc.document_type,
+                        })
+                        continue
+                except Exception:
+                    pass
+
+            fn = att.get("filename", "attachment.pdf")
+            content = att.get("content", b"")
+            if isinstance(content, str):
+                content = content.encode("utf-8")
+            sha = hashlib.sha256(content).hexdigest()
+            doc_type = att.get("document_type") or ("BOL" if "bol" in fn.lower() else ("POD" if "pod" in fn.lower() else "UNKNOWN"))
+            new_doc = doc_repo.create(
+                organization_id=uuid.UUID(org_id),
+                file_name=fn,
+                storage_path=f"/attachments/{sha}_{fn}",
+                document_type=doc_type,
+                file_size_bytes=len(content),
+                mime_type=att.get("mime_type", "application/pdf"),
+                checksum_sha256=sha,
+            )
+            registered_docs.append({
+                "id": str(new_doc.id),
+                "document_id": str(new_doc.id),
+                "filename": new_doc.file_name,
+                "document_type": new_doc.document_type,
+            })
+
+        logger.info(f"Ingesting event for org {org_id}, run {run_id}, attachments: {len(registered_docs)}")
         return {
             "run_id": run_id,
             "started_at": started_at,
@@ -76,6 +120,7 @@ def build_inbox_agent_graph(
             "prompt_version": PROMPT_VERSION,
             "cost_estimate": 0.0,
             "tool_calls": [],
+            "attachments": registered_docs,
         }
 
     # ---------------- Node 2: Resolve Entity ---------------- #
@@ -108,6 +153,17 @@ def build_inbox_agent_graph(
         else:
             updates["entity_id"] = None
             updates["shipment"] = None
+            # Check if candidates were extracted from message but not found in DB (Unknown Shipment Reference)
+            cand = res.evidence.get("extracted_candidates") or []
+            if cand:
+                updates["intent"] = "unknown_shipment"
+                cand_vals = [
+                    str(c.get("normalized_value") or c.get("raw_value") or c.get("value") or c)
+                    for c in cand
+                    if c and (isinstance(c, dict) or isinstance(c, str))
+                ]
+                cand_str = ", ".join([v for v in cand_vals if v])
+                updates["reasoning"] = f"Unknown shipment reference: {cand_str} not found in database" if cand_str else "Unknown shipment reference not found in database"
 
         return updates
 
@@ -131,11 +187,11 @@ def build_inbox_agent_graph(
 
     # ---------------- Node 4: Classify Intent ---------------- #
     async def node_classify_intent(state: InboxAgentState) -> Dict[str, Any]:
-        """Classify message intent into one of the 3 supported workflows, or ambiguous/unrelated."""
-        # If resolver already flagged ambiguity, preserve it
-        if state.get("intent") == "ambiguous":
+        """Classify message intent into one of the supported workflows, or ambiguous/unknown."""
+        # If resolver already flagged ambiguity or unknown shipment reference, preserve it
+        if state.get("intent") in ("ambiguous", "unknown_shipment"):
             return {
-                "intent": "ambiguous",
+                "intent": state["intent"],
                 "intent_confidence": state.get("intent_confidence", 0.5),
                 "confidence": 0.5,
                 "extracted_data": {},
@@ -254,6 +310,27 @@ def build_inbox_agent_graph(
             if "bol" in combined:
                 missing_fields.append("bol_number")
             extracted_data["missing_fields"] = missing_fields or ["general_shipment_details"]
+
+        # Workflow D: Document attachment / BOL / POD received
+        document_keywords = [
+            "bol attached",
+            "bill of lading",
+            "pod attached",
+            "proof of delivery",
+            "delivery receipt",
+            "attached please find",
+            "attached document",
+            "signed bol",
+            "signed pod",
+            "attached bol",
+            "attached pod",
+        ]
+        if not classified_intent:
+            if any(kw in combined for kw in document_keywords) or (
+                state.get("attachments") and any(k in combined for k in ("bol", "pod", "attached", "lading", "delivery"))
+            ):
+                classified_intent = "document_attached"
+                confidence = 0.95
 
         # 2. Fallback to LLM for unstructured or ambiguous cases
         if not classified_intent or confidence < 0.85:
@@ -376,6 +453,48 @@ def build_inbox_agent_graph(
                 "reason": "Ambiguous message requires human operator resolution",
             }
 
+        elif intent == "unknown_shipment":
+            proposed_action = {
+                "tool_name": "create_task",
+                "arguments": {
+                    "title": f"Review Unknown Shipment Reference: {state.get('subject')}",
+                    "task_type": "review",
+                    "description": state.get("reasoning", "Candidate identifier found in email does not exist in database."),
+                    "priority": "high",
+                    "idempotency_key": f"unknown-shp-{trigger_id}",
+                },
+                "risk_level": "high",
+                "reason": "Unknown shipment reference requires operator review",
+            }
+
+        elif intent in ("document_attached", "pod_received", "bol_received"):
+            if shipment and state.get("attachments"):
+                first_att = state["attachments"][0]
+                doc_id = first_att.get("document_id") or first_att.get("id")
+                proposed_action = {
+                    "tool_name": "attach_document",
+                    "arguments": {
+                        "shipment_id": shipment["id"],
+                        "document_id": doc_id,
+                        "document_type": first_att.get("document_type"),
+                        "idempotency_key": f"attach-{shipment['id']}-{doc_id}",
+                    },
+                    "risk_level": "low",
+                    "reason": f"Attach verified {first_att.get('document_type', 'document')} to canonical shipment record",
+                }
+            else:
+                proposed_action = {
+                    "tool_name": "create_task",
+                    "arguments": {
+                        "title": f"Review unmatched document attachment: {state.get('subject')}",
+                        "task_type": "review",
+                        "description": "Document received but matching shipment could not be identified.",
+                        "idempotency_key": f"doc-unmatched-{trigger_id}",
+                    },
+                    "risk_level": "medium",
+                    "reason": "Unmatched document attachment requires operator review",
+                }
+
         elif intent == "unrelated":
             proposed_action = None
 
@@ -480,39 +599,73 @@ def build_inbox_agent_graph(
         # If update_shipment succeeded for pickup confirmation or ETA update, send customer/carrier reply
         thread_id = state.get("thread_id")
         intent = state.get("intent")
+        shipment = state.get("shipment")
 
-        if result.status in ("success", "cached") and thread_id:
-            reply_body = None
-            if intent == "pickup_confirmation":
-                reply_body = "Thank you. Pickup confirmation has been recorded in the platform."
-            elif intent == "eta_update":
-                reply_body = "Thank you. Updated ETA has been logged into the platform."
-            elif intent == "missing_information":
-                missing = state.get("extracted_data", {}).get("missing_fields", ["required information"])
-                reply_body = f"Please provide the following missing information for this shipment: {', '.join(missing)}."
+        if result.status in ("success", "cached"):
+            # 1. Attach any incoming documents/attachments to the resolved shipment
+            if shipment and tool_name != "attach_document":
+                for att in state.get("attachments", []):
+                    doc_id = att.get("document_id") or att.get("id")
+                    if doc_id:
+                        att_ctx = ToolContext(
+                            organization_id=org_uuid,
+                            agent_run_id=run_uuid,
+                            actor_id=f"agent:{state['run_id']}",
+                            actor_type="agent",
+                            granted_permissions={"*"},
+                            idempotency_key=f"attach-{shipment['id']}-{doc_id}",
+                        )
+                        att_res = await registry.execute(
+                            name="attach_document",
+                            context=att_ctx,
+                            db=db,
+                            arguments={
+                                "shipment_id": shipment["id"],
+                                "document_id": doc_id,
+                                "document_type": att.get("document_type"),
+                            },
+                        )
+                        tool_calls.append({
+                            "tool_name": "attach_document",
+                            "arguments": {"shipment_id": shipment["id"], "document_id": doc_id},
+                            "status": att_res.status,
+                            "latency_ms": att_res.latency_ms,
+                            "data": att_res.data,
+                        })
 
-            if reply_body:
-                reply_context = ToolContext(
-                    organization_id=org_uuid,
-                    agent_run_id=run_uuid,
-                    actor_id=f"agent:{state['run_id']}",
-                    actor_type="agent",
-                    granted_permissions={"*"},
-                    idempotency_key=f"notice-{arguments.get('idempotency_key')}",
-                )
-                reply_res = await registry.execute(
-                    name="reply_to_thread",
-                    context=reply_context,
-                    db=db,
-                    arguments={"thread_id": thread_id, "body": reply_body},
-                )
-                tool_calls.append({
-                    "tool_name": "reply_to_thread",
-                    "arguments": {"thread_id": thread_id, "body": reply_body},
-                    "status": reply_res.status,
-                    "latency_ms": reply_res.latency_ms,
-                    "data": reply_res.data,
-                })
+            # 2. Outbound thread reply if appropriate
+            if thread_id:
+                reply_body = None
+                if intent == "pickup_confirmation":
+                    reply_body = "Thank you. Pickup confirmation has been recorded in the platform."
+                elif intent == "eta_update":
+                    reply_body = "Thank you. Updated ETA has been logged into the platform."
+                elif intent == "missing_information":
+                    missing = state.get("extracted_data", {}).get("missing_fields", ["required information"])
+                    reply_body = f"Please provide the following missing information for this shipment: {', '.join(missing)}."
+
+                if reply_body:
+                    reply_context = ToolContext(
+                        organization_id=org_uuid,
+                        agent_run_id=run_uuid,
+                        actor_id=f"agent:{state['run_id']}",
+                        actor_type="agent",
+                        granted_permissions={"*"},
+                        idempotency_key=f"notice-{arguments.get('idempotency_key')}",
+                    )
+                    reply_res = await registry.execute(
+                        name="reply_to_thread",
+                        context=reply_context,
+                        db=db,
+                        arguments={"thread_id": thread_id, "body": reply_body},
+                    )
+                    tool_calls.append({
+                        "tool_name": "reply_to_thread",
+                        "arguments": {"thread_id": thread_id, "body": reply_body},
+                        "status": reply_res.status,
+                        "latency_ms": reply_res.latency_ms,
+                        "data": reply_res.data,
+                    })
 
         updates: Dict[str, Any] = {
             "tool_result": result.model_dump(),
@@ -560,7 +713,7 @@ def build_inbox_agent_graph(
 
     # ---------------- Node 9: Audit ---------------- #
     async def node_audit(state: InboxAgentState) -> Dict[str, Any]:
-        """Persist AgentRun record in database and write immutable audit log."""
+        """Persist AgentRun record in database and write immutable audit log with full before/after diff."""
         org_uuid = uuid.UUID(state["organization_id"])
         run_uuid = uuid.UUID(state["run_id"])
         completed_at = datetime.now(timezone.utc).isoformat()
@@ -587,6 +740,23 @@ def build_inbox_agent_graph(
             cost_estimate=state.get("cost_estimate", 0.0),
         )
 
+        # Capture before/after entity snapshot for auditable diff
+        shipment_before = state.get("shipment")
+        shipment_after_dict = None
+        if state.get("entity_id"):
+            db.expire_all()
+            after_rec = shipment_repo.get_by_id(org_uuid, uuid.UUID(state["entity_id"]))
+            if after_rec:
+                shipment_after_dict = {
+                    "id": str(after_rec.id),
+                    "load_id": after_rec.load_id,
+                    "shipment_number": after_rec.shipment_number,
+                    "status": after_rec.status,
+                    "pickup_date": after_rec.pickup_date.isoformat() if after_rec.pickup_date else None,
+                    "eta": after_rec.eta.isoformat() if after_rec.eta else None,
+                    "carrier_name": after_rec.carrier_name,
+                }
+
         # Append immutable audit entry
         audit_repo.record(
             organization_id=org_uuid,
@@ -596,8 +766,14 @@ def build_inbox_agent_graph(
             actor_id=str(run_uuid),
             target_entity_type="shipment",
             target_entity_id=state.get("entity_id"),
-            payload_before={"trigger_event_id": state.get("trigger_event_id")},
-            payload_after=final_result,
+            payload_before={
+                "trigger_event_id": state.get("trigger_event_id"),
+                "shipment": shipment_before,
+            },
+            payload_after={
+                "final_result": final_result,
+                "shipment": shipment_after_dict or shipment_before,
+            },
             metadata_json={
                 "model_used": state.get("model_used"),
                 "prompt_version": state.get("prompt_version"),

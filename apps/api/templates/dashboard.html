@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en" class="h-full bg-slate-950 text-slate-100">
 <head>
   <meta charset="UTF-8">
@@ -57,6 +57,30 @@
   <main class="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
     <!-- Left Column: Mailbox & Scenarios (5 cols) -->
     <div class="lg:col-span-5 flex flex-col space-y-4">
+      <!-- Live Gmail Connection & Sync Panel -->
+      <div class="bg-gradient-to-r from-slate-900 to-indigo-950/40 border border-indigo-900/50 rounded-xl p-3.5 shadow-sm">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center space-x-2">
+            <span class="text-sm">📧</span>
+            <span class="text-xs font-semibold text-white">Gmail Live Connector</span>
+          </div>
+          <span id="gmail-status-pill" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+            OAuth Ready
+          </span>
+        </div>
+        <p class="text-[11px] text-slate-400 mb-2.5">
+          Connect your Google Workspace or Gmail inbox via OAuth 2.0 or run automated, hands-free inbox synchronization:
+        </p>
+        <div class="flex items-center space-x-2">
+          <button onclick="connectGmailOAuth()" class="flex-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition flex items-center justify-center">
+            <span class="mr-1">🔑</span> Connect Google
+          </button>
+          <button onclick="syncLiveGmail()" id="btn-sync-gmail" class="flex-1 px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition flex items-center justify-center">
+            <span class="mr-1">⚡</span> Sync Live Inbox
+          </button>
+        </div>
+      </div>
+
       <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-sm font-semibold text-white flex items-center">
@@ -258,8 +282,67 @@
         renderScenarios();
         selectScenario(0);
         refreshTables();
+        await checkGmailStatus();
       } catch (err) {
         console.error("Failed to load initial state:", err);
+      }
+    }
+
+    async function checkGmailStatus() {
+      try {
+        const res = await fetch('/api/v1/connectors/gmail/status');
+        const data = await res.json();
+        const pill = document.getElementById('gmail-status-pill');
+        if (data.connected && data.connections.length > 0) {
+          pill.innerText = 'Connected: ' + data.connections[0].email_address;
+          pill.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800';
+        } else {
+          pill.innerText = 'OAuth Ready';
+          pill.className = 'text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700';
+        }
+      } catch (err) {
+        console.error("Gmail status check error:", err);
+      }
+    }
+
+    async function connectGmailOAuth() {
+      try {
+        const res = await fetch('/api/v1/connectors/gmail/auth-url');
+        const data = await res.json();
+        if (data.auth_url) {
+          if (!data.client_id_configured) {
+            alert("Google Client ID is not yet configured in environment variables (GMAIL_CLIENT_ID). Set GMAIL_CLIENT_ID & GMAIL_CLIENT_SECRET to redirect to Google's live login, or use Sync Live Inbox for automated pipeline testing.");
+          } else {
+            window.location.href = data.auth_url;
+          }
+        }
+      } catch (err) {
+        alert("Failed to initiate Google OAuth: " + err);
+      }
+    }
+
+    async function syncLiveGmail() {
+      const btn = document.getElementById('btn-sync-gmail');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="animate-spin mr-1">⟳</span> Syncing...';
+      try {
+        const res = await fetch('/api/v1/connectors/gmail/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'is:unread', limit: 10 })
+        });
+        const data = await res.json();
+        if (data.executions && data.executions.length > 0) {
+          alert(`Automated Gmail Sync Complete!\nProcessed ${data.messages_processed} email(s) automatically through the agent with zero copy/paste.`);
+        } else {
+          alert(`Automated Gmail Sync: ${data.messages_found} unread messages found. All messages up to date.`);
+        }
+        await loadState();
+      } catch (err) {
+        alert("Gmail sync error: " + err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="mr-1">⚡</span> Sync Live Inbox';
       }
     }
 

@@ -7,7 +7,7 @@ and normalizes typed outputs.
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -102,6 +102,8 @@ class InboxAgentService:
             "subject": input_data.subject,
             "body": input_data.body_text,
             "raw_payload": input_data.raw_metadata or {},
+            "attachments": input_data.attachments or [],
+            "associated_documents": [],
             "errors": [],
             "started_at": run_record.started_at.isoformat(),
         }
@@ -146,6 +148,7 @@ async def run_inbox_agent(
     trigger_event_id: Optional[str] = None,
     thread_id: Optional[str] = None,
     message_id: Optional[str] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
     tool_registry: Optional[ToolRegistry] = None,
     llm_gateway: Optional[LLMGateway] = None,
 ) -> InboxAgentOutput:
@@ -163,5 +166,6 @@ async def run_inbox_agent(
         sender=sender,
         subject=subject,
         body_text=body_text,
+        attachments=attachments or [],
     )
     return await service.run(input_data)
