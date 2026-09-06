@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from apps.api.main import app
 from packages.domain.models import (
@@ -24,8 +25,6 @@ from packages.domain.models import (
 )
 from packages.storage.db import Base, get_db
 
-
-from sqlalchemy.pool import StaticPool
 
 @pytest.fixture(scope="function")
 def client():
