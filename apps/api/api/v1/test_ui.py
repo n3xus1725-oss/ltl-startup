@@ -15,8 +15,17 @@ from sqlalchemy.orm import Session
 
 from apps.agent.inbox.service import InboxAgentService
 from apps.agent.inbox.validators import InboxAgentInput
-from packages.domain.models import AuditLog, Organization, Shipment, ToolCall
+from packages.domain.models import (
+    AuditFindingRecord,
+    AuditLog,
+    CarrierContact,
+    CarrierInvoice,
+    Organization,
+    Shipment,
+    ToolCall,
+)
 from packages.storage.db import check_db_connection, get_db
+from packages.storage.repositories.carrier_contacts import CarrierContactRepository
 
 router = APIRouter(prefix="/test-ui", tags=["Testing UI"])
 
@@ -1168,3 +1177,164 @@ async def run_billing_audit_agent(
         "cost_estimate": output.cost_estimate,
         "run_id": output.run_id,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 4 DISPUTE AGENT TESTING ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+class RunDisputeAgentRequest(BaseModel):
+    scenario: str = Field(
+        default="auto_approved",
+        description="auto_approved | requires_human | no_contact",
+    )
+    force_amount: Optional[float] = Field(
+        default=None,
+        description="Override discrepancy amount for testing threshold logic",
+    )
+
+
+@router.post("/dispute-agent/run", summary="[Phase 4] Run dispute agent simulation")
+def run_dispute_agent_simulation(
+    body: RunDisputeAgentRequest,
+    db: Session = Depends(get_db),
+):
+    """Simulate a full dispute agent run for UI testing.
+    Creates ephemeral test data, runs the agent, and returns results.
+    Scenario options:
+    - 'auto_approved': verified contact + amount under threshold -> auto_approved + sent
+    - 'requires_human': verified contact + amount over threshold -> requires_human_approval
+    - 'no_contact': no contact -> escalate to human
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from apps.agent.dispute.service import run_dispute_agent
+
+    # Get or create test org
+    org = db.query(Organization).filter(Organization.slug == DEFAULT_TEST_ORG_SLUG).first()
+    if not org:
+        org = Organization(name=DEFAULT_TEST_ORG_NAME, slug=DEFAULT_TEST_ORG_SLUG)
+        db.add(org)
+        db.commit()
+        db.refresh(org)
+
+    # Determine scenario amounts
+    scenarios = {
+        "auto_approved": {"amount": 180.00, "carrier": "Old Dominion", "has_contact": True},
+        "requires_human": {"amount": 500.00, "carrier": "SAIA Freight", "has_contact": True},
+        "no_contact": {"amount": 150.00, "carrier": "Unknown Carrier Co", "has_contact": False},
+    }
+    scenario_config = scenarios.get(body.scenario, scenarios["auto_approved"])
+    amount = body.force_amount if body.force_amount is not None else scenario_config["amount"]
+    carrier = scenario_config["carrier"]
+
+    # Create test shipment
+    import random
+    suffix = random.randint(1000, 9999)
+    shipment = Shipment(
+        organization_id=org.id,
+        shipment_number=f"SHP-UI-{suffix}",
+        carrier_name=carrier,
+        status="delivered",
+    )
+    db.add(shipment)
+    db.commit()
+    db.refresh(shipment)
+
+    # Create test invoice
+    invoice = CarrierInvoice(
+        organization_id=org.id,
+        shipment_id=shipment.id,
+        carrier_name=carrier,
+        invoice_number=f"INV-UI-{suffix}",
+        total_billed_amount=amount + 1000.0,
+        linehaul_amount=1000.0,
+        fuel_amount=amount,
+    )
+    db.add(invoice)
+    db.commit()
+    db.refresh(invoice)
+
+    # Create audit finding with the discrepancy amount
+    finding = AuditFindingRecord(
+        organization_id=org.id,
+        invoice_id=invoice.id,
+        shipment_id=shipment.id,
+        rule_id="RULE_02_LINEHAUL_MISMATCH",
+        rule_name="Wrong Linehaul Rate",
+        severity="high",
+        discrepancy_amount=amount,  # This is the AUTHORITATIVE disputed amount
+        reason=f"Billed ${amount + 1000:.2f}, contracted rate is $1000.00",
+        confidence=0.92,
+        recommended_action="dispute",
+        evidence={"source_documents": ["SIGNED_BOL", "RATE_CONFIRMATION"]},
+    )
+    db.add(finding)
+    db.commit()
+    db.refresh(finding)
+
+    # Create carrier contact if scenario requires it
+    if scenario_config["has_contact"]:
+        existing_contact = CarrierContactRepository(db).get_verified_contact(org.id, carrier)
+        if not existing_contact:
+            contact = CarrierContact(
+                organization_id=org.id,
+                carrier_name=carrier,
+                billing_email=f"billing@{carrier.lower().replace(' ', '')}.com",
+                contact_name=f"{carrier} Billing Dept",
+                is_verified=True,
+            )
+            db.add(contact)
+            db.commit()
+
+    # Mock LLM for deterministic UI testing
+    mock_response = MagicMock()
+    mock_response.content = (
+        f"SUBJECT: Invoice Dispute — INV-UI-{suffix} / {carrier}\n\n"
+        f"LETTER:\nDear {carrier} Billing Department,\n\n"
+        f"We are formally disputing a total of ${amount:.2f} on invoice INV-UI-{suffix}.\n\n"
+        f"Our records show the billed amount exceeds the contracted rate by ${amount:.2f}.\n"
+        f"Please issue a corrected invoice or credit memo.\n\nBest regards,\nFreight Operations"
+    )
+    mock_response.cost_estimate = 0.0012
+    mock_response.prompt_tokens = 350
+    mock_response.completion_tokens = 120
+
+    mock_llm = MagicMock()
+    mock_llm.default_model = "gpt-4o-mini (simulated)"
+    mock_llm.complete = AsyncMock(return_value=mock_response)
+
+    try:
+        result = run_dispute_agent(
+            organization_id=str(org.id),
+            invoice_id=str(invoice.id),
+            finding_ids=[str(finding.id)],
+            db=db,
+            llm=mock_llm,
+            triggered_by="ui-simulation",
+        )
+        return {
+            "scenario": body.scenario,
+            "run_id": result.run_id,
+            "dispute_id": result.dispute_id,
+            "dispute_number": result.dispute_number,
+            "status": result.status,
+            "approval_status": result.approval_status,
+            "recipient_email": result.recipient_email,
+            "disputed_amount": result.disputed_amount,
+            "dispute_letter_subject": result.dispute_letter_subject,
+            "dispute_letter_preview": result.dispute_letter_preview,
+            "needs_human": result.needs_human,
+            "error": result.error,
+            "trajectory": result.trajectory,
+            "cost_estimate": result.cost_estimate,
+            "model_used": mock_llm.default_model,
+            "financial_integrity_note": f"disputed_amount={result.disputed_amount} sourced from AuditFindingRecord.discrepancy_amount={amount} — NOT from LLM",
+        }
+    except Exception as e:
+        return {
+            "scenario": body.scenario,
+            "error": str(e),
+            "status": "failed",
+            "trajectory": [],
+        }
