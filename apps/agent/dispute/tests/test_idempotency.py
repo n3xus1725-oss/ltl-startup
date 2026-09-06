@@ -57,6 +57,7 @@ def setup_data(db):
         rule_id="RULE_03", rule_name="Fuel Mismatch", severity="medium",
         discrepancy_amount=100.00, reason="Fuel surcharge incorrect",
         confidence=0.88, recommended_action="dispute",
+        evidence={"source_documents": ["SIGNED_BOL"]}
     )
     db.add(finding)
     db.commit()

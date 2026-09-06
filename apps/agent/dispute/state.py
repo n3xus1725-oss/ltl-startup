@@ -16,6 +16,7 @@ class DisputeAgentState(TypedDict):
     finding_ids: list[str]  # AuditFindingRecord UUIDs to dispute
     triggered_by: str
     run_id: str
+    idempotency_key: Optional[str]
 
     # Resolved findings data (populated by node_load_findings)
     findings: list[dict]  # serialized AuditFindingRecord data

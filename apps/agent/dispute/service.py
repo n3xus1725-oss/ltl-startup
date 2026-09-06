@@ -77,6 +77,7 @@ class DisputeAgentService:
             "finding_ids": input_data.finding_ids,
             "triggered_by": input_data.triggered_by,
             "run_id": str(run_id),
+            "idempotency_key": idempotency_key,
             "findings": [],
             "carrier_name": "",
             "invoice_number": "",

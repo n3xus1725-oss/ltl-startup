@@ -57,6 +57,7 @@ def setup_data(db):
         discrepancy_amount=200.00,  # Under auto-threshold of $250
         reason="Billed $1200, contracted $1000", confidence=0.95,
         recommended_action="dispute",
+        evidence={"source_documents": ["SIGNED_BOL"]}
     )
     db.add(finding)
     db.commit()

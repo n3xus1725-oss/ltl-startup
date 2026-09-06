@@ -381,7 +381,7 @@ def build_dispute_graph(db: Session, llm: LLMGateway) -> Any:
                 disputed_amount=state["disputed_amount"],  # FROM DB — authoritative
                 expected_amount=state.get("expected_amount"),
                 billed_amount=state.get("billed_amount"),
-                idempotency_key=state.get("run_id"),
+                idempotency_key=state.get("idempotency_key"),
             )
 
             dispute_repo.set_recipient(dispute.id, state["recipient_email"], state.get("recipient_contact_name"))
@@ -450,7 +450,7 @@ def build_dispute_graph(db: Session, llm: LLMGateway) -> Any:
                 disputed_amount=state.get("disputed_amount", 0.0),
                 expected_amount=state.get("expected_amount"),
                 billed_amount=state.get("billed_amount"),
-                idempotency_key=state.get("run_id"),
+                idempotency_key=state.get("idempotency_key"),
             )
             dispute_repo.update_dispute_status(dispute.id, "pending_approval")
             dispute_repo.update_approval_status(dispute.id, "requires_human_approval")
@@ -460,6 +460,7 @@ def build_dispute_graph(db: Session, llm: LLMGateway) -> Any:
             return {
                 "dispute_id": str(dispute.id),
                 "dispute_status": "pending_approval",
+                "approval_decision": "requires_human_approval",
                 "needs_human": True,
                 "trajectory": state.get("trajectory", []) + [
                     _step("request_human_approval", "escalated",
