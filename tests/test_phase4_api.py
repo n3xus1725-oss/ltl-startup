@@ -25,11 +25,14 @@ from packages.domain.models import (
 from packages.storage.db import Base, get_db
 
 
+from sqlalchemy.pool import StaticPool
+
 @pytest.fixture(scope="function")
 def client():
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
     Base.metadata.create_all(bind=engine)
     SessionFactory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
@@ -54,6 +57,7 @@ def seed_data(client):
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
     Base.metadata.create_all(bind=engine)
     SessionFactory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
