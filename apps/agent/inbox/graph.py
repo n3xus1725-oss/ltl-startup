@@ -173,17 +173,190 @@ def build_inbox_agent_graph(
         org_uuid = uuid.UUID(state["organization_id"])
         context_data: Dict[str, Any] = {}
 
+        canonical_dict = None
+        ledger_dict = None
+
         if state.get("entity_id"):
             shipment_uuid = uuid.UUID(state["entity_id"])
             events = shipment_repo.get_events(org_uuid, shipment_uuid)
             context_data["event_count"] = len(events)
             context_data["latest_event"] = events[-1].event_type if events else None
 
+            # Phase 2: Load canonical data and provenance ledger
+            canonical_dict = shipment_repo.get_canonical(org_uuid, shipment_uuid)
+            ledger = shipment_repo.get_provenance_ledger(org_uuid, shipment_uuid)
+            ledger_dict = ledger.to_dict() if ledger else None
+
         if state.get("thread_id"):
             thread_msgs = message_repo.get_by_thread_id(org_uuid, state["thread_id"])
             context_data["thread_message_count"] = len(thread_msgs)
 
-        return {"context": context_data}
+        return {
+            "context": context_data,
+            "canonical_shipment": canonical_dict,
+            "provenance_ledger": ledger_dict,
+        }
+
+    # ---------------- Node 3.5: Verify Truth & Conflicts ---------------- #
+    async def node_verify_truth(state: InboxAgentState) -> Dict[str, Any]:
+        """Phase 2.6 — Consult Source-of-Truth Engine and Conflict Engine before acting."""
+        from packages.documents.pipeline import DocumentProcessingPipeline
+        from packages.domain.provenance import FieldProvenanceRecord, ProvenanceLedger
+        from packages.rules.authority import SourceAuthorityEngine
+        from packages.rules.conflict_engine import ConflictEngine
+        from packages.storage.repositories.conflicts import ConflictRepository
+
+        org_uuid = uuid.UUID(state["organization_id"])
+        entity_id = state.get("entity_id")
+        shipment_uuid = uuid.UUID(entity_id) if entity_id else None
+
+        authority_engine = SourceAuthorityEngine()
+        conflict_repo = ConflictRepository(db)
+        doc_pipeline = DocumentProcessingPipeline(db)
+
+        candidate_assertions = list(state.get("candidate_assertions") or [])
+        detected_conflicts = list(state.get("detected_conflicts") or [])
+        authority_decisions = list(state.get("authority_decisions") or [])
+
+        # 1. Extract assertions from attachments if any
+        for att in state.get("attachments", []):
+            content = att.get("content") or b""
+            if isinstance(content, str):
+                content = content.encode("utf-8")
+            fn = att.get("filename") or att.get("file_name") or "attachment.pdf"
+            if content and len(content) > 10:
+                try:
+                    processed = doc_pipeline.process_content(
+                        filename=fn,
+                        content_bytes=content,
+                        organization_id=org_uuid,
+                        document_id=str(uuid.uuid4()),
+                    )
+                    for cand in processed.provenance_assertions:
+                        candidate_assertions.append(cand if isinstance(cand, dict) else cand.model_dump())
+                except Exception as e:
+                    logger.warning(f"Error processing attachment in truth node: {e}")
+
+        # 2. Extract assertions from inline email text if matching document headers
+        body = state.get("body") or ""
+        upper_body = body.upper()
+        if any(marker in upper_body for marker in ("RATE CONFIRMATION", "BILL OF LADING", "CAT SCALE TICKET", "PROOF OF DELIVERY", "INVOICE")):
+            try:
+                processed = doc_pipeline.process_content(
+                    filename="inline_body.txt",
+                    content_bytes=body.encode("utf-8"),
+                    organization_id=org_uuid,
+                    document_id=str(uuid.uuid4()),
+                )
+                for cand in processed.provenance_assertions:
+                    candidate_assertions.append(cand if isinstance(cand, dict) else cand.model_dump())
+            except Exception as e:
+                logger.warning(f"Error processing inline body document in truth node: {e}")
+
+        # If no shipment resolved, pass through
+        if not shipment_uuid:
+            return {
+                "candidate_assertions": candidate_assertions,
+                "detected_conflicts": detected_conflicts,
+                "authority_decisions": authority_decisions,
+            }
+
+        # 3. Evaluate candidate assertions against active ledger & detect conflicts
+        ledger = shipment_repo.get_provenance_ledger(org_uuid, shipment_uuid)
+        active_ledger = ledger if ledger else ProvenanceLedger()
+
+        has_blocking_conflict = False
+        conflict_reasons = []
+
+        for cand_dict in candidate_assertions:
+            cand_rec = FieldProvenanceRecord(**cand_dict)
+            curr_rec = active_ledger.get_active(cand_rec.field)
+
+            # Pricing cross-field mapping (e.g. invoice billed_total vs rate_con agreed_total)
+            if curr_rec is None:
+                if cand_rec.field in ("pricing.billed_total", "pricing.linehaul"):
+                    curr_rec = active_ledger.get_active("pricing.agreed_total") or active_ledger.get_active("pricing.linehaul")
+                elif cand_rec.field == "pricing.agreed_total":
+                    curr_rec = active_ledger.get_active("pricing.billed_total")
+
+            decision = authority_engine.evaluate_assertion(cand_rec, curr_rec)
+            authority_decisions.append({
+                "field": cand_rec.field,
+                "candidate_source": cand_rec.source,
+                "candidate_authority": cand_rec.authority,
+                "decision": decision.value,
+            })
+
+            # Check value mismatch / conflicts
+            if curr_rec is not None:
+                conflict = ConflictEngine.evaluate_value_mismatch(cand_rec.field, curr_rec, cand_rec)
+                if conflict:
+                    try:
+                        conflict_repo.create_conflict(
+                            organization_id=org_uuid,
+                            shipment_id=shipment_uuid,
+                            field_name=conflict.field_name,
+                            conflict_type=conflict.conflict_type,
+                            source_a=conflict.source_a,
+                            source_b=conflict.source_b,
+                            explanation=conflict.explanation,
+                            severity=conflict.severity,
+                            recommended_workflow=conflict.recommended_workflow,
+                            idempotency_key=f"conf-{shipment_uuid}-{conflict.field_name}-{cand_rec.source_id}",
+                        )
+                    except Exception as e:
+                        logger.warning(f"Conflict insert error: {e}")
+
+                    detected_conflicts.append(conflict.model_dump())
+                    if conflict.severity in ("critical", "high"):
+                        has_blocking_conflict = True
+                        conflict_reasons.append(f"{conflict.field_name}: {conflict.explanation}")
+
+        # 4. Synchronize approved candidate assertions into CanonicalShipment & ProvenanceLedger
+        canonical_dict = state.get("canonical_shipment")
+        if not has_blocking_conflict and candidate_assertions:
+            canonical_model = shipment_repo.get_canonical_model(org_uuid, shipment_uuid)
+            for cand_dict in candidate_assertions:
+                f = cand_dict.get("field")
+                v = cand_dict.get("value")
+                if not any(c.get("field_name") == f for c in detected_conflicts):
+                    try:
+                        canonical_model.set_field_value(f, v)
+                        active_ledger.record_assertion(FieldProvenanceRecord(**cand_dict))
+                    except Exception as e:
+                        logger.warning(f"Failed to set field {f} on canonical: {e}")
+
+            shipment_repo.update_canonical(
+                org_uuid,
+                shipment_uuid,
+                canonical_model.model_dump(),
+                active_ledger.to_dict(),
+            )
+            canonical_dict = canonical_model.model_dump()
+
+        updates: Dict[str, Any] = {
+            "candidate_assertions": candidate_assertions,
+            "detected_conflicts": detected_conflicts,
+            "authority_decisions": authority_decisions,
+            "canonical_shipment": canonical_dict,
+            "provenance_ledger": active_ledger.to_dict(),
+        }
+
+        if has_blocking_conflict:
+            updates["approval_state"] = "needs_human"
+            updates["terminal_outcome"] = "needs_human"
+            updates["reasoning"] = "Truth conflict detected: " + "; ".join(conflict_reasons)
+            updates["decision"] = "Action halted: truth discrepancy flagged for human review or dispute routing."
+            task_repo.create_task(
+                organization_id=org_uuid,
+                task_type="review",
+                title="Resolve Truth Conflict on Shipment",
+                description="; ".join(conflict_reasons),
+                shipment_id=shipment_uuid,
+                priority="high",
+            )
+
+        return updates
 
     # ---------------- Node 4: Classify Intent ---------------- #
     async def node_classify_intent(state: InboxAgentState) -> Dict[str, Any]:
@@ -602,6 +775,70 @@ def build_inbox_agent_graph(
         shipment = state.get("shipment")
 
         if result.status in ("success", "cached"):
+            # Phase 2: Synchronize Canonical Shipment and Provenance Ledger
+            if shipment and tool_name == "update_shipment":
+                shipment_uuid = uuid.UUID(shipment["id"])
+                try:
+                    canonical = shipment_repo.get_canonical_model(org_uuid, shipment_uuid)
+                    ledger = shipment_repo.get_provenance_ledger(org_uuid, shipment_uuid)
+                    from packages.domain.provenance import FieldProvenanceRecord, ProvenanceLedger
+                    if not ledger:
+                        ledger = ProvenanceLedger()
+
+                    args = arguments
+                    if "status" in args and args["status"]:
+                        canonical.status = args["status"]
+                        ledger.record_assertion(FieldProvenanceRecord(
+                            field="status",
+                            value=args["status"],
+                            source="carrier_email" if intent in ("pickup_confirmation", "eta_update") else "system",
+                            source_id=state.get("message_id") or state.get("run_id"),
+                            authority=60,
+                            confidence=0.95,
+                        ))
+                    if "pickup_date" in args and args["pickup_date"]:
+                        p_val = parse_date(args["pickup_date"]) if isinstance(args["pickup_date"], str) else args["pickup_date"]
+                        canonical.dates.pickup_actual = p_val
+                        ledger.record_assertion(FieldProvenanceRecord(
+                            field="dates.pickup_actual",
+                            value=str(args["pickup_date"]),
+                            source="carrier_email",
+                            source_id=state.get("message_id") or state.get("run_id"),
+                            authority=60,
+                            confidence=0.95,
+                        ))
+                    if "eta" in args and args["eta"]:
+                        e_val = parse_date(args["eta"]) if isinstance(args["eta"], str) else args["eta"]
+                        canonical.dates.delivery_estimated = e_val
+                        ledger.record_assertion(FieldProvenanceRecord(
+                            field="dates.delivery_estimated",
+                            value=str(args["eta"]),
+                            source="carrier_email",
+                            source_id=state.get("message_id") or state.get("run_id"),
+                            authority=60,
+                            confidence=0.95,
+                        ))
+
+                    # Apply non-conflicting candidate assertions
+                    for cand_dict in state.get("candidate_assertions", []):
+                        f = cand_dict.get("field")
+                        v = cand_dict.get("value")
+                        if not any(c.get("field_name") == f for c in state.get("detected_conflicts", [])):
+                            try:
+                                canonical.set_field_value(f, v)
+                                ledger.record_assertion(FieldProvenanceRecord(**cand_dict))
+                            except Exception:
+                                pass
+
+                    shipment_repo.update_canonical(
+                        organization_id=org_uuid,
+                        shipment_id=shipment_uuid,
+                        canonical_data=canonical.model_dump(),
+                        provenance_ledger=ledger.to_dict(),
+                    )
+                except Exception as e:
+                    logger.warning(f"Error updating canonical shipment in execute_tool: {e}")
+
             # 1. Attach any incoming documents/attachments to the resolved shipment
             if shipment and tool_name != "attach_document":
                 for att in state.get("attachments", []):
@@ -793,6 +1030,7 @@ def build_inbox_agent_graph(
     workflow.add_node("ingest", node_ingest)
     workflow.add_node("resolve_entity", node_resolve_entity)
     workflow.add_node("load_context", node_load_context)
+    workflow.add_node("verify_truth", node_verify_truth)
     workflow.add_node("classify_intent", node_classify_intent)
     workflow.add_node("propose_action", node_propose_action)
     workflow.add_node("permission_check", node_permission_check)
@@ -804,7 +1042,23 @@ def build_inbox_agent_graph(
     workflow.set_entry_point("ingest")
     workflow.add_edge("ingest", "resolve_entity")
     workflow.add_edge("resolve_entity", "load_context")
-    workflow.add_edge("load_context", "classify_intent")
+    workflow.add_edge("load_context", "verify_truth")
+
+    def route_after_verify_truth(state: InboxAgentState) -> str:
+        # If blocking truth conflict detected, escalate directly to audit (halts automated tool write)
+        if state.get("approval_state") == "needs_human" and state.get("detected_conflicts"):
+            return "audit"
+        return "classify_intent"
+
+    workflow.add_conditional_edges(
+        "verify_truth",
+        route_after_verify_truth,
+        {
+            "audit": "audit",
+            "classify_intent": "classify_intent",
+        },
+    )
+
     workflow.add_edge("classify_intent", "propose_action")
     workflow.add_edge("propose_action", "permission_check")
 

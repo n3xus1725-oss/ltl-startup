@@ -23,7 +23,14 @@ class InboxAgentState(TypedDict, total=False):
     # Resolution & Context
     resolver_result: Optional[Dict[str, Any]]
     shipment: Optional[Dict[str, Any]]
+    canonical_shipment: Optional[Dict[str, Any]]
+    provenance_ledger: Optional[Dict[str, Any]]
     context: Dict[str, Any]
+
+    # Source-of-Truth & Conflict Verification
+    candidate_assertions: List[Dict[str, Any]]
+    detected_conflicts: List[Dict[str, Any]]
+    authority_decisions: List[Dict[str, Any]]
 
     # Reasoning & Classification
     intent: Optional[str]  # pickup_confirmation, eta_update, missing_information, ambiguous, unrelated, etc.

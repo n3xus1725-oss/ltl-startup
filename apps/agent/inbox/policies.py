@@ -21,6 +21,7 @@ PERMITTED_INBOX_TOOLS = {
     "send_email",
     "reply_to_thread",
     "create_exception",
+    "search_context",
 }
 
 
@@ -57,6 +58,7 @@ def check_tool_permission(tool_name: str, granted_permissions: Set[str]) -> bool
         "send_email": "email:send",
         "reply_to_thread": "email:send",
         "create_exception": "exception:write",
+        "search_context": "shipment:read",
     }
 
     req = permission_map.get(tool_name)

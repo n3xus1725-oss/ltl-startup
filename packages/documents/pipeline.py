@@ -186,6 +186,15 @@ class DocumentProcessingPipeline:
                     "authority": 70,
                     "confidence": 0.95,
                 })
+            if inv_obj.linehaul_amount is not None:
+                provenance_assertions.append({
+                    "field": "pricing.linehaul",
+                    "value": inv_obj.linehaul_amount,
+                    "source": "invoice",
+                    "source_id": doc_ref_id,
+                    "authority": 70,
+                    "confidence": 0.95,
+                })
             if inv_obj.invoice_number:
                 provenance_assertions.append({
                     "field": "billing_references.invoice_id",

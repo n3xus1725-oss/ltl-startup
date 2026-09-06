@@ -116,17 +116,17 @@ class DocumentNormalizer:
         load_id = DocumentNormalizer._extract_number(r"(?:Load|Load ID|PO #|Order #)[#:\s-]*([A-Z0-9-]{4,20})", text)
         bol_num = DocumentNormalizer._extract_number(r"(?:BOL|Bill of Lading)[#:\s-]*([A-Z0-9-]{4,30})", text)
         carrier_ref = DocumentNormalizer._extract_number(r"(?:PRO|PRO #|Carrier Ref)[#:\s-]*([A-Z0-9-]{4,30})", text)
-        total = DocumentNormalizer._extract_amount(r"(?:Total Due|Total Amount|Invoice Total|Amount Due|Balance Due)[#:\s-]*\$?([0-9,.]+)", text)
-        linehaul = DocumentNormalizer._extract_amount(r"(?:Linehaul|Freight Charge)[#:\s-]*\$?([0-9,.]+)", text)
-        fuel = DocumentNormalizer._extract_amount(r"(?:Fuel|Fuel Surcharge)[#:\s-]*\$?([0-9,.]+)", text)
+        total = DocumentNormalizer._extract_amount(r"(?:Total Due|Total Amount|Invoice Total|Amount Due|Balance Due|Total)[#:\s-]*\$?([0-9,.]+)", text)
+        linehaul = DocumentNormalizer._extract_amount(r"(?:Linehaul(?:\s*Rate|\s*Amount)?|Freight Charge|Base Rate)[#:\s-]*\$?([0-9,.]+)", text)
+        fuel = DocumentNormalizer._extract_amount(r"(?:Fuel|Fuel Surcharge|FSC)[#:\s-]*\$?([0-9,.]+)", text)
 
         return NormalizedInvoice(
             invoice_number=inv_num,
             load_id=load_id,
             bol_number=bol_num,
             carrier_reference=carrier_ref,
-            total_billed_amount=total,
-            linehaul_amount=linehaul,
+            total_billed_amount=total or (linehaul if linehaul else None),
+            linehaul_amount=linehaul or (total if total else None),
             fuel_amount=fuel,
             raw_text=text[:2000],
         )

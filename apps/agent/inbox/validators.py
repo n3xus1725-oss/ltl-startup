@@ -52,6 +52,7 @@ class InboxAgentOutput(BaseModel):
     entity_id: Optional[str] = None
     terminal_outcome: str  # completed, needs_human, failed
     decision: Optional[str] = None
+    reasoning: Optional[str] = None
     confidence: float = 0.0
     approval_state: str = "none"
     tools_available: List[str] = Field(default_factory=list)
@@ -61,6 +62,10 @@ class InboxAgentOutput(BaseModel):
     cost_estimate: float = 0.0
     model_used: str = "default"
     model_version: str = "v1"
-    prompt_version: str = "inbox_agent_v0.1"
     started_at: str
     completed_at: Optional[str] = None
+
+    @property
+    def success(self) -> bool:
+        """Returns True if the agent run reached completed terminal outcome."""
+        return self.terminal_outcome == "completed"

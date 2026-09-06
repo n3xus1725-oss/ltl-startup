@@ -461,8 +461,45 @@ class CreateExceptionTool(BaseTool):
         )
 
 
+# ---------------- 9. search_context ---------------- #
+
+class SearchContextInput(BaseModel):
+    query: str = Field(..., min_length=1, description="Search query across canonical data, documents, and historical messages")
+    shipment_id: Optional[str] = Field(None, description="Optional shipment ID constraint")
+    top_k: int = Field(default=5, ge=1, le=20, description="Max results to return")
+
+
+class SearchContextOutput(BaseModel):
+    count: int
+    results: List[Dict[str, Any]]
+
+
+class SearchContextTool(BaseTool):
+    name = "search_context"
+    purpose = "Retrieve canonical shipment facts, document evidence chunks, and historical messages."
+    input_schema = SearchContextInput
+    output_schema = SearchContextOutput
+    required_permission = "shipment:read"
+    external_side_effects = False
+
+    async def execute(
+        self, context: ToolContext, db: Session, input_data: SearchContextInput
+    ) -> SearchContextOutput:
+        from packages.retrieval.engine import ShipmentRetrievalEngine
+        engine = ShipmentRetrievalEngine(db)
+        items = engine.search_all(
+            organization_id=context.organization_id,
+            query=input_data.query,
+            limit=input_data.top_k,
+        )
+        return SearchContextOutput(
+            count=len(items),
+            results=[i.model_dump() for i in items],
+        )
+
+
 def create_standard_tool_registry() -> ToolRegistry:
-    """Instantiate and register all 8 standard freight execution tools."""
+    """Instantiate and register all standard freight execution tools."""
     registry = ToolRegistry()
     registry.register(FindShipmentTool())
     registry.register(GetShipmentTool())
@@ -472,4 +509,6 @@ def create_standard_tool_registry() -> ToolRegistry:
     registry.register(SendEmailTool())
     registry.register(ReplyToThreadTool())
     registry.register(CreateExceptionTool())
+    registry.register(SearchContextTool())
     return registry
+

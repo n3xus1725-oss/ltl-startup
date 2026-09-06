@@ -62,6 +62,8 @@ class ConflictRepository(BaseRepository[ShipmentConflict]):
         self.db.refresh(conflict)
         return conflict
 
+    create = create_conflict
+
     def list_by_shipment(
         self, organization_id: uuid.UUID, shipment_id: uuid.UUID, status: Optional[str] = None
     ) -> List[ShipmentConflict]:

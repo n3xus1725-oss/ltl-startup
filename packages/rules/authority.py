@@ -167,3 +167,12 @@ class SourceAuthorityEngine:
         else:
             # Equal authority asserting conflicting values
             return AssertionDecision.FLAG_CONFLICT
+
+    def evaluate_assertion(
+        self,
+        proposed: FieldProvenanceRecord,
+        current: Optional[FieldProvenanceRecord] = None,
+        tolerance_pct: float = 0.01,
+    ) -> AssertionDecision:
+        """Alias for evaluate(current, proposed)."""
+        return self.evaluate(current=current, proposed=proposed, tolerance_pct=tolerance_pct)

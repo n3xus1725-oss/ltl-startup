@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Freight Execution Platform — Phase 1 Test Dashboard</title>
+  <title>AI Freight Platform — Phase 2 Testing Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -24,16 +24,22 @@
   </script>
   <style>
     pre { white-space: pre-wrap; word-break: break-all; }
+    .tab-active { border-bottom: 2px solid #22c55e; color: #22c55e; font-weight: 600; }
+    .tab-inactive { color: #94a3b8; }
+    .tab-inactive:hover { color: #f8fafc; }
   </style>
 </head>
 <body class="h-full flex flex-col font-sans antialiased text-slate-200">
   <!-- Top Navigation Bar -->
-  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50 px-6 py-3.5 flex items-center justify-between">
+  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
     <div class="flex items-center space-x-3">
       <div class="h-8 w-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-lg">⚡</div>
       <div>
-        <h1 class="text-base font-semibold text-white leading-tight">AI Freight Execution Platform</h1>
-        <p class="text-xs text-slate-400">Phase 1 Developer & Operator Testing Console</p>
+        <div class="flex items-center space-x-2">
+          <h1 class="text-base font-semibold text-white leading-tight">AI Freight Execution Platform</h1>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800 font-medium">Phase 2: Source-of-Truth Active</span>
+        </div>
+        <p class="text-xs text-slate-400">Canonical Reconciliation, Field Provenance, Conflict Guardrails & Retrieval</p>
       </div>
     </div>
     <div class="flex items-center space-x-3 text-xs">
@@ -53,152 +59,375 @@
     </div>
   </header>
 
-  <!-- Main Container -->
-  <main class="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-    <!-- Left Column: Mailbox & Scenarios (5 cols) -->
-    <div class="lg:col-span-5 flex flex-col space-y-4">
-      <!-- Live Gmail Connection & Sync Panel -->
-      <div class="bg-gradient-to-r from-slate-900 to-indigo-950/40 border border-indigo-900/50 rounded-xl p-3.5 shadow-sm">
-        <div class="flex items-center justify-between mb-2">
-          <div class="flex items-center space-x-2">
-            <span class="text-sm">📧</span>
-            <span class="text-xs font-semibold text-white">Gmail Live Connector</span>
+  <!-- Suite Navigation Tabs -->
+  <nav class="border-b border-slate-800 bg-slate-900/60 px-6 flex space-x-6 text-xs font-medium">
+    <button onclick="switchMainTab('inbox')" id="main-tab-inbox" class="py-3 tab-active flex items-center space-x-1.5">
+      <span>📬</span><span>1. Inbox Agent & Execution</span>
+    </button>
+    <button onclick="switchMainTab('canonical')" id="main-tab-canonical" class="py-3 tab-inactive flex items-center space-x-1.5">
+      <span>🏛️</span><span>2. Canonical Model & Provenance</span>
+    </button>
+    <button onclick="switchMainTab('conflicts')" id="main-tab-conflicts" class="py-3 tab-inactive flex items-center space-x-1.5">
+      <span>⚠️</span><span>3. Conflict Guardrail Console</span>
+      <span id="conflicts-count-badge" class="ml-1 px-1.5 py-0.2 rounded-full bg-red-950 text-red-400 border border-red-800 text-[10px] hidden">0</span>
+    </button>
+    <button onclick="switchMainTab('documents')" id="main-tab-documents" class="py-3 tab-inactive flex items-center space-x-1.5">
+      <span>📄</span><span>4. Document Classifier & Parser</span>
+    </button>
+    <button onclick="switchMainTab('retrieval')" id="main-tab-retrieval" class="py-3 tab-inactive flex items-center space-x-1.5">
+      <span>🔍</span><span>5. Context & Vector Search</span>
+    </button>
+    <button onclick="switchMainTab('simulation')" id="main-tab-simulation" class="py-3 tab-inactive flex items-center space-x-1.5 text-amber-400">
+      <span>🚀</span><span>6. Multi-Source Simulator (Exit Criteria)</span>
+    </button>
+  </nav>
+
+  <!-- Main Content Areas -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col space-y-6">
+
+    <!-- TAB 1: INBOX AGENT & LIVE EXECUTION (Phase 1 + 2.6 Upgraded) -->
+    <div id="section-inbox" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- Left Column: Mailbox & Scenarios (5 cols) -->
+      <div class="lg:col-span-5 flex flex-col space-y-4">
+        <!-- Live Gmail Connection & Sync Panel -->
+        <div class="bg-gradient-to-r from-slate-900 to-indigo-950/40 border border-indigo-900/50 rounded-xl p-3.5 shadow-sm">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center space-x-2">
+              <span class="text-sm">📧</span>
+              <span class="text-xs font-semibold text-white">Gmail Live Connector</span>
+            </div>
+            <span id="gmail-status-pill" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+              OAuth Ready
+            </span>
           </div>
-          <span id="gmail-status-pill" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-            OAuth Ready
-          </span>
+          <p class="text-[11px] text-slate-400 mb-2.5">
+            Connect Google Workspace/Gmail or run hands-free inbox synchronization:
+          </p>
+          <div class="flex items-center space-x-2">
+            <button onclick="connectGmailOAuth()" class="flex-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition flex items-center justify-center">
+              <span class="mr-1">🔑</span> Connect Google
+            </button>
+            <button onclick="syncLiveGmail()" id="btn-sync-gmail" class="flex-1 px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition flex items-center justify-center">
+              <span class="mr-1">⚡</span> Sync Live Inbox
+            </button>
+          </div>
         </div>
-        <p class="text-[11px] text-slate-400 mb-2.5">
-          Connect your Google Workspace or Gmail inbox via OAuth 2.0 or run automated, hands-free inbox synchronization:
-        </p>
-        <div class="flex items-center space-x-2">
-          <button onclick="connectGmailOAuth()" class="flex-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition flex items-center justify-center">
-            <span class="mr-1">🔑</span> Connect Google
-          </button>
-          <button onclick="syncLiveGmail()" id="btn-sync-gmail" class="flex-1 px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition flex items-center justify-center">
-            <span class="mr-1">⚡</span> Sync Live Inbox
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-semibold text-white flex items-center">
+              <span class="text-base mr-2">📬</span> Inbound Test Mailbox
+            </h2>
+            <span id="mail-count" class="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">Loading...</span>
+          </div>
+          <p class="text-xs text-slate-400 mb-3">Select a scenario to test extraction, truth verification, and tool guardrails:</p>
+          
+          <!-- Scenario List -->
+          <div id="email-scenarios" class="space-y-2 max-h-56 overflow-y-auto pr-1"></div>
+        </div>
+
+        <!-- Active Email Inspector / Composer -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex-1 flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Email Message Payload</h3>
+            <button onclick="toggleComposer()" class="text-xs text-emerald-400 hover:text-emerald-300">
+              + Compose Custom
+            </button>
+          </div>
+
+          <div class="space-y-2 text-xs flex-1 flex flex-col">
+            <div>
+              <label class="text-slate-500 block mb-0.5">Sender</label>
+              <input id="input-sender" type="text" class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200 focus:border-emerald-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="text-slate-500 block mb-0.5">Subject</label>
+              <input id="input-subject" type="text" class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium" />
+            </div>
+            <div class="flex-1 flex flex-col">
+              <label class="text-slate-500 block mb-0.5">Body</label>
+              <textarea id="input-body" rows="5" class="w-full flex-1 bg-slate-950 border border-slate-800 rounded p-2 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono text-xs"></textarea>
+            </div>
+          </div>
+
+          <button id="btn-process" onclick="processActiveEmail()" class="mt-4 w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm flex items-center justify-center space-x-2 transition shadow-lg shadow-emerald-950">
+            <span>⚡ Run Upgraded Inbox Agent (Phase 2.6)</span>
           </button>
         </div>
       </div>
 
+      <!-- Right Column: Live Agent Execution & Trace (7 cols) -->
+      <div class="lg:col-span-7 flex flex-col space-y-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex-1 flex flex-col">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <div class="flex items-center space-x-2">
+              <span class="text-base">🧠</span>
+              <h2 class="text-sm font-semibold text-white">Live Execution Trace with Truth Engine</h2>
+            </div>
+            <span id="trace-status" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400">Idle / Awaiting Trigger</span>
+          </div>
+
+          <!-- Trace Visualizer Content -->
+          <div id="trace-container" class="space-y-4 flex-1 overflow-y-auto pr-1">
+            <!-- Placeholder before first run -->
+            <div id="trace-placeholder" class="h-64 flex flex-col items-center justify-center text-center p-8 border border-dashed border-slate-800 rounded-lg">
+              <div class="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-2xl mb-3">🚚</div>
+              <h3 class="text-sm font-medium text-slate-300">Ready to Evaluate Upgraded Agent</h3>
+              <p class="text-xs text-slate-500 max-w-sm mt-1">
+                Select an email on the left and click <strong class="text-emerald-400">"Run Upgraded Inbox Agent"</strong> to watch resolution, document extraction, truth engine verification, conflict guardrails, and canonical mutations.
+              </p>
+            </div>
+
+            <!-- Step 1: Entity Resolution -->
+            <div id="trace-step-resolver" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-emerald-400 flex items-center">
+                  <span class="w-2 h-2 rounded-full bg-emerald-400 mr-1.5"></span> 1. Deterministic Shipment Resolver
+                </span>
+                <span id="match-badge" class="text-xs px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">Matched</span>
+              </div>
+              <div id="matched-shipment-details" class="text-xs text-slate-300 bg-slate-900 rounded p-2 border border-slate-800 font-mono"></div>
+            </div>
+
+            <!-- Step 2: Truth & Conflict Engine (Phase 2.6) -->
+            <div id="trace-step-truth" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-cyan-400 flex items-center">
+                  <span class="w-2 h-2 rounded-full bg-cyan-400 mr-1.5"></span> 2. Source-of-Truth & Conflict Engine (Phase 2.6)
+                </span>
+                <span id="truth-badge" class="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">Truth Checked</span>
+              </div>
+              <div id="truth-details" class="text-xs text-slate-300 bg-slate-900 rounded p-2 border border-slate-800 font-mono"></div>
+            </div>
+
+            <!-- Step 3: Intent Classification & Decision -->
+            <div id="trace-step-decision" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-indigo-400 flex items-center">
+                  <span class="w-2 h-2 rounded-full bg-indigo-400 mr-1.5"></span> 3. LangGraph Intent & Propose Action
+                </span>
+                <span id="confidence-badge" class="text-xs px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">Confidence: 100%</span>
+              </div>
+              <div id="decision-details" class="text-xs text-slate-300 bg-slate-900 rounded p-2 border border-slate-800"></div>
+            </div>
+
+            <!-- Step 4: Tool Invocations -->
+            <div id="trace-step-tools" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+              <span class="text-xs font-semibold text-amber-400 block mb-2 flex items-center">
+                <span class="w-2 h-2 rounded-full bg-amber-400 mr-1.5"></span> 4. Typed Tool Execution (Validated Side-Effects)
+              </span>
+              <div id="tool-calls-list" class="space-y-2"></div>
+            </div>
+
+            <!-- Step 5: Database State Diff -->
+            <div id="trace-step-diff" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+              <span class="text-xs font-semibold text-sky-400 block mb-2 flex items-center">
+                <span class="w-2 h-2 rounded-full bg-sky-400 mr-1.5"></span> 5. Database State Mutation (Before vs After)
+              </span>
+              <div id="diff-content" class="text-xs font-mono bg-slate-900 p-2.5 rounded border border-slate-800"></div>
+            </div>
+
+            <!-- Step 6: Audit Log -->
+            <div id="trace-step-audit" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-purple-400 flex items-center">
+                  <span class="w-2 h-2 rounded-full bg-purple-400 mr-1.5"></span> 6. Immutable Audit Log Entry
+                </span>
+                <span id="audit-idempotency-badge" class="text-xs text-slate-500 font-mono"></span>
+              </div>
+              <div id="audit-content" class="text-xs font-mono bg-slate-900 p-2.5 rounded border border-slate-800 text-slate-400"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: CANONICAL MODEL & PROVENANCE INSPECTOR (Phase 2.1) -->
+    <div id="section-canonical" class="hidden flex flex-col space-y-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-sm font-semibold text-white flex items-center">
+              <span class="text-base mr-2">🏛️</span> Canonical Shipment Model & Field-Level Provenance Ledger
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Every field retains its authoritative source, confidence score, authority ranking, and audit timestamp. Zero silent data overwrites.</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <label class="text-xs text-slate-400">Select Shipment:</label>
+            <select id="canonical-shipment-select" onchange="loadCanonicalShipment()" class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200">
+              <option value="">Loading shipments...</option>
+            </select>
+            <button onclick="loadCanonicalShipment()" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200">↻ Reload</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Structured Canonical Entities -->
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-3 flex items-center">
+              <span class="mr-1.5">📦</span> Reconciled Canonical Entities
+            </h3>
+            <div id="canonical-entities-view" class="text-xs space-y-3 font-mono">
+              <div class="text-slate-500 italic">Select a shipment to inspect canonical state...</div>
+            </div>
+          </div>
+
+          <!-- Provenance Ledger -->
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-indigo-400 mb-3 flex items-center">
+              <span class="mr-1.5">📜</span> Active Field Provenance Ledger
+            </h3>
+            <div id="canonical-provenance-view" class="text-xs space-y-2 font-mono max-h-96 overflow-y-auto pr-1">
+              <div class="text-slate-500 italic">Select a shipment to inspect field provenance trail...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: CONFLICT GUARDRAIL CONSOLE (Phase 2.4) -->
+    <div id="section-conflicts" class="hidden flex flex-col space-y-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-sm font-semibold text-white flex items-center">
+              <span class="text-base mr-2">⚠️</span> Detected Discrepancies & Truth Conflicts
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Surfaces pricing mismatches, certified reweigh discrepancies, and illegal status jumps without silent data loss.</p>
+          </div>
+          <button onclick="loadConflicts()" class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200">↻ Refresh Conflicts</button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="border-b border-slate-800 text-slate-400">
+                <th class="py-2.5 px-3">Severity</th>
+                <th class="py-2.5 px-3">Field</th>
+                <th class="py-2.5 px-3">Type</th>
+                <th class="py-2.5 px-3">Source A (Current Truth)</th>
+                <th class="py-2.5 px-3">Source B (Proposed Assertion)</th>
+                <th class="py-2.5 px-3">Explanation</th>
+                <th class="py-2.5 px-3">Recommended Workflow</th>
+                <th class="py-2.5 px-3">Status</th>
+                <th class="py-2.5 px-3">Action</th>
+              </tr>
+            </thead>
+            <tbody id="conflicts-tbody" class="divide-y divide-slate-800 text-slate-300">
+              <tr><td colspan="9" class="text-center py-6 text-slate-500">Loading detected conflicts...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: DOCUMENT CLASSIFIER & PARSER (Phase 2.2) -->
+    <div id="section-documents" class="hidden flex flex-col space-y-4">
       <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
         <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm font-semibold text-white flex items-center">
-            <span class="text-base mr-2">📬</span> Inbound Test Mailbox
-          </h2>
-          <span id="mail-count" class="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">4 scenarios</span>
+          <div>
+            <h2 class="text-sm font-semibold text-white flex items-center">
+              <span class="text-base mr-2">📄</span> Freight Document Processing Playground
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Test classification, layout/text parsing, field normalization, and provenance assertion generation.</p>
+          </div>
+          <!-- Sample Loaders -->
+          <div class="flex items-center space-x-2">
+            <span class="text-xs text-slate-500">Load sample:</span>
+            <button onclick="loadSampleDoc('bol')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">BOL</button>
+            <button onclick="loadSampleDoc('rate_con')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">Rate Con</button>
+            <button onclick="loadSampleDoc('invoice')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">Invoice</button>
+            <button onclick="loadSampleDoc('scale_ticket')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">Scale Ticket</button>
+            <button onclick="loadSampleDoc('pod')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">POD</button>
+          </div>
         </div>
-        <p class="text-xs text-slate-400 mb-3">Select a realistic freight carrier email or compose your own to test agent extraction & execution:</p>
-        
-        <!-- Scenario List -->
-        <div id="email-scenarios" class="space-y-2 max-h-64 overflow-y-auto pr-1">
-          <div class="text-xs text-slate-500 py-4 text-center">Loading scenarios...</div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Document Input -->
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs text-slate-400 block mb-1">Simulated Filename</label>
+              <input id="doc-filename" type="text" value="BOL-9842-Dallas.pdf" class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200" />
+            </div>
+            <div>
+              <label class="text-xs text-slate-400 block mb-1">Document Content / Extracted Raw Text</label>
+              <textarea id="doc-content" rows="14" class="w-full bg-slate-950 border border-slate-800 rounded p-2.5 text-xs font-mono text-slate-200 focus:border-emerald-500 focus:outline-none"></textarea>
+            </div>
+            <button onclick="parseDocumentPlayground()" id="btn-parse-doc" class="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition">
+              ⚡ Classify, Normalize & Generate Provenance
+            </button>
+          </div>
+
+          <!-- Document Output -->
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 flex flex-col">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Pipeline Results</h3>
+            <div id="doc-results-container" class="flex-1 text-xs space-y-3 font-mono overflow-y-auto">
+              <div class="text-slate-500 italic py-12 text-center">Click "Classify, Normalize & Generate Provenance" to view parsing breakdown.</div>
+            </div>
+          </div>
         </div>
       </div>
+    </div>
 
-      <!-- Active Email Inspector / Composer -->
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex-1 flex flex-col">
-        <div class="flex items-center justify-between mb-2">
-          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Email Message Payload</h3>
-          <button onclick="toggleComposer()" id="btn-toggle-compose" class="text-xs text-emerald-400 hover:text-emerald-300">
-            + Compose Custom
+    <!-- TAB 5: CONTEXT & VECTOR RETRIEVAL (Phase 2.5) -->
+    <div id="section-retrieval" class="hidden flex flex-col space-y-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="text-sm font-semibold text-white flex items-center">
+              <span class="text-base mr-2">🔍</span> Multi-Tenant Context & Semantic Retrieval Engine
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Search across shipments, documents, and messages with strict organization isolation and relevance ranking.</p>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-3 mb-4">
+          <input id="retrieval-query" type="text" placeholder="Search by Load ID, carrier, commodity, detention, or damaged freight..." class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none" />
+          <button onclick="executeRetrievalSearch()" id="btn-search-retrieval" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition">
+            Search
           </button>
         </div>
 
-        <div class="space-y-2 text-xs flex-1 flex flex-col">
-          <div>
-            <label class="text-slate-500 block mb-0.5">Sender</label>
-            <input id="input-sender" type="text" class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-slate-200 focus:border-emerald-500 focus:outline-none" />
-          </div>
-          <div>
-            <label class="text-slate-500 block mb-0.5">Subject</label>
-            <input id="input-subject" type="text" class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium" />
-          </div>
-          <div class="flex-1 flex flex-col">
-            <label class="text-slate-500 block mb-0.5">Body</label>
-            <textarea id="input-body" rows="6" class="w-full flex-1 bg-slate-950 border border-slate-800 rounded p-2 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono text-xs"></textarea>
-          </div>
+        <!-- Quick Query Tags -->
+        <div class="flex items-center space-x-2 text-xs text-slate-400 mb-4">
+          <span>Quick queries:</span>
+          <button onclick="setSearchQuery('Estes Express')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">Estes Express</button>
+          <button onclick="setSearchQuery('Load 5821')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">Load 5821</button>
+          <button onclick="setSearchQuery('Chicago to Atlanta')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">Chicago to Atlanta</button>
+          <button onclick="setSearchQuery('Rate Confirmation agreed')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">Rate Confirmation agreed</button>
         </div>
 
-        <button id="btn-process" onclick="processActiveEmail()" class="mt-4 w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm flex items-center justify-center space-x-2 transition shadow-lg shadow-emerald-950">
-          <span>⚡ Run Autonomous Agent</span>
-        </button>
+        <div id="retrieval-results" class="space-y-2.5">
+          <div class="text-xs text-slate-500 py-8 text-center border border-dashed border-slate-800 rounded-lg">Enter a search query to test unified relational and semantic retrieval.</div>
+        </div>
       </div>
     </div>
 
-    <!-- Right Column: Live Agent Execution & Trace (7 cols) -->
-    <div class="lg:col-span-7 flex flex-col space-y-4">
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex-1 flex flex-col">
-        <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-          <div class="flex items-center space-x-2">
-            <span class="text-base">🧠</span>
-            <h2 class="text-sm font-semibold text-white">Live Agent Execution & Trace</h2>
-          </div>
-          <span id="trace-status" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400">Idle / Awaiting Trigger</span>
-        </div>
-
-        <!-- Trace Visualizer Content -->
-        <div id="trace-container" class="space-y-4 flex-1 overflow-y-auto pr-1">
-          <!-- Placeholder before first run -->
-          <div id="trace-placeholder" class="h-64 flex flex-col items-center justify-center text-center p-8 border border-dashed border-slate-800 rounded-lg">
-            <div class="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-2xl mb-3">🚚</div>
-            <h3 class="text-sm font-medium text-slate-300">Ready to Evaluate Agent</h3>
-            <p class="text-xs text-slate-500 max-w-sm mt-1">
-              Select an incoming freight email on the left and click <strong class="text-emerald-400">"Run Autonomous Agent"</strong> to watch the resolver, intent classifier, tool execution, and live database updates in real time.
+    <!-- TAB 6: MULTI-SOURCE PROGRESSIVE RECONSTRUCTION (Exit Criteria Demo) -->
+    <div id="section-simulation" class="hidden flex flex-col space-y-4">
+      <div class="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-900/50 rounded-xl p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="text-base font-semibold text-white flex items-center">
+              <span class="text-xl mr-2">🚀</span> Progressive Multi-Source Reconstruction & Conflict Guardrails
+            </h2>
+            <p class="text-xs text-slate-400 mt-1 max-w-3xl">
+              Demonstrates <strong>Phase 2 Exit Criteria</strong> in one click: reconstructs canonical shipment state progressively from Rate Con &rarr; Driver Email &rarr; BOL &rarr; Certified Reweigh Scale Ticket &rarr; Conflicting Invoice &rarr; POD without silent data overwrites.
             </p>
           </div>
+          <button onclick="runMultiSourceSimulation()" id="btn-run-simulation" class="px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-amber-950 flex items-center space-x-1.5">
+            <span>⚡ Run 1-Click Simulation</span>
+          </button>
+        </div>
 
-          <!-- Live Step 1: Entity Resolution -->
-          <div id="trace-step-resolver" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-semibold text-emerald-400 flex items-center">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 mr-1.5"></span> 1. Deterministic Shipment Resolver
-              </span>
-              <span id="match-badge" class="text-xs px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">Matched</span>
-            </div>
-            <div id="matched-shipment-details" class="text-xs text-slate-300 bg-slate-900 rounded p-2 border border-slate-800 font-mono"></div>
-          </div>
-
-          <!-- Live Step 2: Intent Classification & Decision -->
-          <div id="trace-step-decision" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-semibold text-indigo-400 flex items-center">
-                <span class="w-2 h-2 rounded-full bg-indigo-400 mr-1.5"></span> 2. LangGraph Intent & Decision
-              </span>
-              <span id="confidence-badge" class="text-xs px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">Confidence: 100%</span>
-            </div>
-            <div id="decision-details" class="text-xs text-slate-300 bg-slate-900 rounded p-2 border border-slate-800"></div>
-          </div>
-
-          <!-- Live Step 3: Tool Invocations -->
-          <div id="trace-step-tools" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
-            <span class="text-xs font-semibold text-amber-400 block mb-2 flex items-center">
-              <span class="w-2 h-2 rounded-full bg-amber-400 mr-1.5"></span> 3. Typed Tool Invocations (RBAC Checked)
-            </span>
-            <div id="tool-calls-list" class="space-y-2"></div>
-          </div>
-
-          <!-- Live Step 4: Live Database State Diff -->
-          <div id="trace-step-diff" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
-            <span class="text-xs font-semibold text-sky-400 block mb-2 flex items-center">
-              <span class="w-2 h-2 rounded-full bg-sky-400 mr-1.5"></span> 4. Supabase Database State Mutation (Before vs After)
-            </span>
-            <div id="diff-content" class="text-xs font-mono bg-slate-900 p-2.5 rounded border border-slate-800"></div>
-          </div>
-
-          <!-- Live Step 5: Audit Log & Provenance -->
-          <div id="trace-step-audit" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-3.5">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-semibold text-purple-400 flex items-center">
-                <span class="w-2 h-2 rounded-full bg-purple-400 mr-1.5"></span> 5. Immutable Audit Log Entry
-              </span>
-              <span id="audit-idempotency-badge" class="text-xs text-slate-500 font-mono"></span>
-            </div>
-            <div id="audit-content" class="text-xs font-mono bg-slate-900 p-2.5 rounded border border-slate-800 text-slate-400"></div>
+        <div id="simulation-stepper" class="mt-5 space-y-3">
+          <div class="text-xs text-slate-500 py-12 text-center border border-dashed border-slate-800 rounded-lg">
+            Click <strong class="text-amber-400">"Run 1-Click Simulation"</strong> to witness the autonomous multi-source reconstruction sequence in real time.
           </div>
         </div>
       </div>
     </div>
+
   </main>
 
   <!-- Bottom Explorer: Supabase Live Tables -->
@@ -210,8 +439,8 @@
           <h3 class="text-sm font-semibold text-white">Supabase Live Data Explorer</h3>
         </div>
         <div class="flex items-center space-x-2">
-          <button onclick="showTab('shipments')" id="tab-btn-shipments" class="px-3 py-1 rounded text-xs bg-slate-800 text-white font-medium">Shipments Table</button>
-          <button onclick="showTab('audit')" id="tab-btn-audit" class="px-3 py-1 rounded text-xs text-slate-400 hover:text-white">Audit Log Table</button>
+          <button onclick="showBottomTab('shipments')" id="tab-btn-shipments" class="px-3 py-1 rounded text-xs bg-slate-800 text-white font-medium">Shipments Table</button>
+          <button onclick="showBottomTab('audit')" id="tab-btn-audit" class="px-3 py-1 rounded text-xs text-slate-400 hover:text-white">Audit Log Table</button>
           <button onclick="refreshTables()" class="text-xs text-emerald-400 hover:underline ml-2">↻ Refresh</button>
         </div>
       </div>
@@ -230,10 +459,11 @@
               <th class="py-2 px-3">Route</th>
               <th class="py-2 px-3">Pickup Date</th>
               <th class="py-2 px-3">ETA</th>
+              <th class="py-2 px-3">Charges</th>
             </tr>
           </thead>
           <tbody id="shipments-tbody" class="divide-y divide-slate-800 text-slate-300">
-            <tr><td colspan="9" class="text-center py-4 text-slate-500">Loading shipments...</td></tr>
+            <tr><td colspan="10" class="text-center py-4 text-slate-500">Loading shipments...</td></tr>
           </tbody>
         </table>
       </div>
@@ -262,6 +492,26 @@
   <script>
     let globalEmails = [];
     let selectedEmailIndex = 0;
+    let globalShipments = [];
+
+    // Tab switcher
+    function switchMainTab(tab) {
+      ['inbox', 'canonical', 'conflicts', 'documents', 'retrieval', 'simulation'].forEach(t => {
+        const sec = document.getElementById('section-' + t);
+        const btn = document.getElementById('main-tab-' + t);
+        if (t === tab) {
+          sec.classList.remove('hidden');
+          btn.className = 'py-3 tab-active flex items-center space-x-1.5';
+        } else {
+          sec.classList.add('hidden');
+          btn.className = 'py-3 tab-inactive flex items-center space-x-1.5';
+        }
+      });
+
+      if (tab === 'canonical') loadCanonicalShipmentsDropdown();
+      if (tab === 'conflicts') loadConflicts();
+      if (tab === 'documents' && !document.getElementById('doc-content').value) loadSampleDoc('bol');
+    }
 
     async function loadState() {
       try {
@@ -283,6 +533,7 @@
         selectScenario(0);
         refreshTables();
         await checkGmailStatus();
+        await loadConflictsBadge();
       } catch (err) {
         console.error("Failed to load initial state:", err);
       }
@@ -397,8 +648,8 @@
       const btn = document.getElementById('btn-process');
       const traceStatus = document.getElementById('trace-status');
       btn.disabled = true;
-      btn.innerHTML = '<span class="animate-spin mr-2">⟳</span> Agent Reasoning...';
-      traceStatus.innerText = 'Executing LangGraph Pipeline...';
+      btn.innerHTML = '<span class="animate-spin mr-2">⟳</span> Agent Reasoning & Truth Verification...';
+      traceStatus.innerText = 'Executing LangGraph Pipeline with Truth Engine...';
       traceStatus.className = 'text-xs px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 animate-pulse';
 
       const payload = {
@@ -416,11 +667,12 @@
         const trace = await res.json();
         renderExecutionTrace(trace);
         refreshTables();
+        await loadConflictsBadge();
       } catch (err) {
         alert("Agent execution failed: " + err);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<span>⚡ Run Autonomous Agent</span>';
+        btn.innerHTML = '<span>⚡ Run Upgraded Inbox Agent (Phase 2.6)</span>';
         traceStatus.innerText = 'Execution Complete';
         traceStatus.className = 'text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300';
       }
@@ -449,17 +701,37 @@
         matchedDetails.innerHTML = `<div>No unique shipment record matched the extracted references. Escalating to avoid arbitrary error.</div>`;
       }
 
-      // 2. Decision
+      // 2. Truth & Conflict Engine (Phase 2.6)
+      const truthStep = document.getElementById('trace-step-truth');
+      const truthBadge = document.getElementById('truth-badge');
+      const truthDetails = document.getElementById('truth-details');
+      truthStep.classList.remove('hidden');
+
+      if (trace.terminal_outcome === 'needs_human' && (trace.decision || '').toLowerCase().includes('truth discrepancy')) {
+        truthBadge.innerText = '⚠️ Discrepancy Flagged (Needs Human)';
+        truthBadge.className = 'text-xs px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-800 font-bold';
+        truthDetails.innerHTML = `
+          <div class="text-red-400 font-semibold mb-1">Truth Conflict Guardrail Triggered:</div>
+          <div class="text-slate-300">${trace.decision}</div>
+          <div class="mt-1 text-[11px] text-slate-400">Automated write halted; canonical model protected from silent overwrite.</div>
+        `;
+      } else {
+        truthBadge.innerText = '✓ Clean / No Discrepancies';
+        truthBadge.className = 'text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800';
+        truthDetails.innerHTML = `<div>Candidate assertions evaluated against authority matrix. No blocking conflicts detected.</div>`;
+      }
+
+      // 3. Decision
       const decisionStep = document.getElementById('trace-step-decision');
       decisionStep.classList.remove('hidden');
       document.getElementById('confidence-badge').innerText = `Outcome: ${trace.terminal_outcome.toUpperCase()} (${Math.round((trace.confidence || 1) * 100)}%)`;
       document.getElementById('decision-details').innerHTML = `
         <div class="font-medium text-white mb-1">Agent Action Proposal:</div>
         <div class="text-slate-300">${trace.decision || 'No automated action triggered; human escalation.'}</div>
-        <div class="mt-2 text-[11px] text-slate-400">Approval State: <span class="text-indigo-300 uppercase">${trace.approval_state}</span> | Prompt: v0</div>
+        <div class="mt-2 text-[11px] text-slate-400">Approval State: <span class="text-indigo-300 uppercase font-semibold">${trace.approval_state}</span> | Prompt: Phase 2.6 Truth Guardrails</div>
       `;
 
-      // 3. Tool Invocations
+      // 4. Tool Invocations
       const toolsStep = document.getElementById('trace-step-tools');
       const toolsList = document.getElementById('tool-calls-list');
       toolsStep.classList.remove('hidden');
@@ -472,10 +744,10 @@
           </div>
         `).join('');
       } else {
-        toolsList.innerHTML = `<div class="text-xs text-slate-500 italic">No tool calls executed (action halted for human safety).</div>`;
+        toolsList.innerHTML = `<div class="text-xs text-slate-500 italic">No tool calls executed (action halted for human review).</div>`;
       }
 
-      // 4. State Diff
+      // 5. State Diff
       const diffStep = document.getElementById('trace-step-diff');
       const diffContent = document.getElementById('diff-content');
       diffStep.classList.remove('hidden');
@@ -489,10 +761,10 @@
           </div>
         `).join('');
       } else {
-        diffContent.innerHTML = `<span class="text-slate-500">No database columns modified for this run.</span>`;
+        diffContent.innerHTML = `<span class="text-slate-500">No flat database columns modified for this run.</span>`;
       }
 
-      // 5. Audit Log
+      // 6. Audit Log
       const auditStep = document.getElementById('trace-step-audit');
       auditStep.classList.remove('hidden');
       if (trace.audit_log) {
@@ -506,6 +778,447 @@
       }
     }
 
+    // ---------------- TAB 2: CANONICAL INSPECTOR ----------------
+    async function loadCanonicalShipmentsDropdown() {
+      const select = document.getElementById('canonical-shipment-select');
+      select.innerHTML = '<option value="">Loading...</option>';
+      try {
+        const res = await fetch('/api/v1/test-ui/shipments');
+        const shipments = await res.json();
+        globalShipments = shipments;
+        select.innerHTML = shipments.map(s => `
+          <option value="${s.id}">${s.load_id || s.shipment_number} (${s.carrier_name || 'Carrier'}) - ${s.status}</option>
+        `).join('');
+        if (shipments.length > 0) {
+          loadCanonicalShipment();
+        }
+      } catch (err) {
+        console.error("Error loading canonical dropdown:", err);
+      }
+    }
+
+    async function loadCanonicalShipment() {
+      const select = document.getElementById('canonical-shipment-select');
+      const id = select.value;
+      if (!id) return;
+
+      const entView = document.getElementById('canonical-entities-view');
+      const provView = document.getElementById('canonical-provenance-view');
+      entView.innerHTML = '<div class="text-slate-500 py-4 text-center">Loading canonical state...</div>';
+      provView.innerHTML = '<div class="text-slate-500 py-4 text-center">Loading provenance trail...</div>';
+
+      try {
+        const res = await fetch(`/api/v1/test-ui/shipments/${id}/canonical`);
+        const data = await res.json();
+        const c = data.canonical_data || {};
+        const ledger = data.provenance_ledger || {};
+
+        // Render Entities
+        entView.innerHTML = `
+          <div class="bg-slate-900 p-2.5 rounded border border-slate-800">
+            <span class="text-slate-400 block mb-1 font-semibold text-emerald-400">Shipment Status:</span>
+            <span class="px-2 py-0.5 rounded text-[11px] ${getStatusClass(c.status || data.status)}">${c.status || data.status}</span>
+          </div>
+
+          <div class="bg-slate-900 p-2.5 rounded border border-slate-800">
+            <span class="text-slate-400 block mb-1 font-semibold text-emerald-400">Pricing Breakdown:</span>
+            <div>Agreed Total: <strong class="text-white">$${c.pricing?.agreed_total ? c.pricing.agreed_total.toFixed(2) : '-'}</strong></div>
+            <div>Billed Total: <strong class="text-white">$${c.pricing?.billed_total ? c.pricing.billed_total.toFixed(2) : '-'}</strong></div>
+            <div>Linehaul: <strong class="text-white">$${c.pricing?.linehaul ? c.pricing.linehaul.toFixed(2) : '-'}</strong></div>
+          </div>
+
+          <div class="bg-slate-900 p-2.5 rounded border border-slate-800">
+            <span class="text-slate-400 block mb-1 font-semibold text-emerald-400">Freight Details:</span>
+            <div>Total Weight: <strong class="text-white">${c.freight_details?.total_weight_lbs ? c.freight_details.total_weight_lbs + ' lbs' : '-'}</strong> (${c.freight_details?.weight_type || 'actual'})</div>
+            <div>Pallet Count: <strong class="text-white">${c.freight_details?.pallet_count || '-'}</strong></div>
+          </div>
+
+          <div class="bg-slate-900 p-2.5 rounded border border-slate-800">
+            <span class="text-slate-400 block mb-1 font-semibold text-emerald-400">Carrier & Equipment:</span>
+            <div>Carrier Name: <strong class="text-white">${c.carrier?.carrier_name || '-'}</strong></div>
+            <div>Trailer #: <strong class="text-white">${c.carrier?.trailer_number || '-'}</strong></div>
+            <div>SCAC / Ref: <strong class="text-white">${c.carrier?.scac || '-'}</strong></div>
+          </div>
+        `;
+
+        // Render Provenance Trail
+        const activeAssertions = ledger.active_assertions || {};
+        const keys = Object.keys(activeAssertions);
+        if (keys.length > 0) {
+          provView.innerHTML = keys.map(k => {
+            const a = activeAssertions[k];
+            return `
+              <div class="bg-slate-900 p-2.5 rounded border border-slate-800">
+                <div class="flex items-center justify-between">
+                  <span class="font-semibold text-indigo-300">${k}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-400 border border-indigo-800">Auth: ${a.authority || 50}/100</span>
+                </div>
+                <div class="text-white mt-1">Value: <strong>${a.value}</strong></div>
+                <div class="text-[11px] text-slate-400 mt-0.5">Source: <span class="text-emerald-400 font-medium">${a.source}</span> (ID: ${a.source_id || '-'})</div>
+                <div class="text-[10px] text-slate-500">Confidence: ${Math.round((a.confidence || 1) * 100)}% | Time: ${(a.timestamp || '').slice(0, 19)}</div>
+              </div>
+            `;
+          }).join('');
+        } else {
+          provView.innerHTML = `<div class="text-slate-500 italic py-4 text-center">No active provenance assertions recorded for this shipment.</div>`;
+        }
+
+      } catch (err) {
+        console.error("Error loading canonical shipment details:", err);
+      }
+    }
+
+    // ---------------- TAB 3: CONFLICT CONSOLE ----------------
+    async function loadConflicts() {
+      const tbody = document.getElementById('conflicts-tbody');
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center py-6 text-slate-500">Loading detected conflicts...</td></tr>';
+      try {
+        const res = await fetch('/api/v1/test-ui/conflicts');
+        const conflicts = await res.json();
+        renderConflictsTable(conflicts);
+        updateConflictsBadge(conflicts.length);
+      } catch (err) {
+        console.error("Error loading conflicts:", err);
+      }
+    }
+
+    async function loadConflictsBadge() {
+      try {
+        const res = await fetch('/api/v1/test-ui/conflicts?status=open');
+        const conflicts = await res.json();
+        updateConflictsBadge(conflicts.length);
+      } catch (err) {}
+    }
+
+    function updateConflictsBadge(count) {
+      const badge = document.getElementById('conflicts-count-badge');
+      if (count > 0) {
+        badge.innerText = count;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    function renderConflictsTable(conflicts) {
+      const tbody = document.getElementById('conflicts-tbody');
+      if (!conflicts || conflicts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-6 text-slate-500">No active discrepancies or conflicts detected in system. Everything reconciled.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = conflicts.map(c => `
+        <tr class="hover:bg-slate-800/40 transition">
+          <td class="py-2.5 px-3">
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${getSeverityClass(c.severity)}">${(c.severity || 'medium').toUpperCase()}</span>
+          </td>
+          <td class="py-2.5 px-3 font-semibold text-white font-mono">${c.field_name}</td>
+          <td class="py-2.5 px-3 text-slate-400 font-mono text-[11px]">${c.conflict_type}</td>
+          <td class="py-2.5 px-3">
+            <div class="text-slate-200 font-semibold">${c.source_a?.value ?? '-'}</div>
+            <div class="text-[10px] text-slate-500">${c.source_a?.source || 'current'} (Auth: ${c.source_a?.authority || '-'})</div>
+          </td>
+          <td class="py-2.5 px-3">
+            <div class="text-amber-400 font-semibold">${c.source_b?.value ?? '-'}</div>
+            <div class="text-[10px] text-slate-500">${c.source_b?.source || 'proposed'} (Auth: ${c.source_b?.authority || '-'})</div>
+          </td>
+          <td class="py-2.5 px-3 text-slate-300 max-w-xs">${c.explanation}</td>
+          <td class="py-2.5 px-3">
+            <span class="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono text-[10px]">${c.recommended_workflow}</span>
+          </td>
+          <td class="py-2.5 px-3">
+            <span class="px-2 py-0.5 rounded text-[10px] ${c.status === 'resolved' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-red-950 text-red-300 border border-red-800'}">${c.status.toUpperCase()}</span>
+          </td>
+          <td class="py-2.5 px-3">
+            ${c.status === 'open' ? `
+              <button onclick="resolveConflictPrompt('${c.id}')" class="px-2 py-1 rounded bg-slate-800 hover:bg-emerald-700 text-slate-200 hover:text-white transition text-[11px]">
+                Resolve
+              </button>
+            ` : `<span class="text-slate-500 text-[10px]">Resolved</span>`}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function resolveConflictPrompt(conflictId) {
+      const notes = prompt("Enter resolution notes / rationale (e.g. 'Approved after carrier rate revision'):", "Approved by operator review in testing console");
+      if (!notes) return;
+
+      try {
+        const res = await fetch(`/api/v1/test-ui/conflicts/${conflictId}/resolve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resolution_notes: notes })
+        });
+        const data = await res.json();
+        alert("Conflict marked as resolved!");
+        await loadConflicts();
+      } catch (err) {
+        alert("Failed to resolve conflict: " + err);
+      }
+    }
+
+    function getSeverityClass(sev) {
+      switch ((sev || '').toLowerCase()) {
+        case 'critical': return 'bg-red-950 text-red-300 border border-red-800';
+        case 'high': return 'bg-orange-950 text-orange-300 border border-orange-800';
+        case 'medium': return 'bg-amber-950 text-amber-300 border border-amber-800';
+        default: return 'bg-slate-800 text-slate-400';
+      }
+    }
+
+    // ---------------- TAB 4: DOCUMENT PARSER PLAYGROUND ----------------
+    const SAMPLE_DOCS = {
+      bol: {
+        filename: "BOL-9842-Dallas.pdf",
+        text: `UNIFORM STRAIGHT BILL OF LADING
+BOL #: BOL-847293
+Load #: 9842
+Carrier Name: R+L Carriers
+Trailer #: TR-7701
+Seal #: SL-9921
+Total Weight: 14,850 lbs
+Pallet Count: 14
+Piece Count: 280
+Shipper: Dallas Steel Works, Dallas TX
+Consignee: Buckeye Machinery, Columbus OH`
+      },
+      rate_con: {
+        filename: "RateConfirmation_LOAD-5821.pdf",
+        text: `CARRIER RATE CONFIRMATION & LOAD TENDER
+Load ID: 5821
+Carrier Name: Estes Express Lines
+Origin: Atlanta, GA
+Destination: Chicago, IL
+Pickup Date: 2026-09-06
+Linehaul Rate: $1,650.00
+Fuel Surcharge: $200.00
+Total Agreed Rate: $1,850.00
+Payment Terms: Net 30`
+      },
+      invoice: {
+        filename: "Carrier_Invoice_INV-9988.pdf",
+        text: `FREIGHT INVOICE
+Invoice #: INV-9988
+Load #: 3344
+BOL #: BOL-3344
+Linehaul Rate: $1,850.00
+Fuel Surcharge: $250.00
+Total Due: $2,100.00
+Remit To: Accounts Receivable, Estes Express Lines`
+      },
+      scale_ticket: {
+        filename: "CAT_ScaleTicket_ST-9001.pdf",
+        text: `CERTIFIED CAT SCALE TICKET
+Ticket #: ST-9001-C
+Scale Name: Pilot Travel Center #104
+Vehicle ID: TR-9988
+Gross Weight: 34,450 lbs
+Tare Weight: 18,000 lbs
+Net Weight: 16,450 lbs
+Date: 2026-09-06`
+      },
+      pod: {
+        filename: "Signed_POD_Load5821.pdf",
+        text: `PROOF OF DELIVERY RECEIPT
+BOL #: BOL-5821-ATL
+Delivery Date: 2026-09-08
+Delivery Time: 14:30
+Received By Signature: John Consignee
+Damage Noted: No Damage
+Received in good order and condition.`
+      }
+    };
+
+    function loadSampleDoc(type) {
+      const doc = SAMPLE_DOCS[type];
+      if (doc) {
+        document.getElementById('doc-filename').value = doc.filename;
+        document.getElementById('doc-content').value = doc.text;
+      }
+    }
+
+    async function parseDocumentPlayground() {
+      const btn = document.getElementById('btn-parse-doc');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="animate-spin mr-1">⟳</span> Parsing Document Pipeline...';
+
+      const payload = {
+        filename: document.getElementById('doc-filename').value,
+        content_text: document.getElementById('doc-content').value,
+      };
+
+      try {
+        const res = await fetch('/api/v1/test-ui/parse-document', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        renderDocResults(data);
+      } catch (err) {
+        alert("Document processing failed: " + err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '⚡ Classify, Normalize & Generate Provenance';
+      }
+    }
+
+    function renderDocResults(data) {
+      const container = document.getElementById('doc-results-container');
+      container.innerHTML = `
+        <div class="bg-slate-900 p-3 rounded border border-slate-800">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400 font-semibold">Classification:</span>
+            <span class="px-2 py-0.5 rounded text-xs bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold">${data.classified_type}</span>
+          </div>
+          <div class="text-[11px] text-slate-400 mt-1">Filename: <span class="text-white">${data.filename}</span> | Confidence: <span class="text-emerald-400">${Math.round(data.confidence * 100)}%</span></div>
+        </div>
+
+        <div class="bg-slate-900 p-3 rounded border border-slate-800">
+          <span class="text-slate-400 font-semibold block mb-1.5 text-emerald-400">Normalized Fields Extracted:</span>
+          <pre class="bg-slate-950 p-2 rounded text-slate-300 text-[11px] border border-slate-800">${JSON.stringify(data.extracted_fields, null, 2)}</pre>
+        </div>
+
+        <div class="bg-slate-900 p-3 rounded border border-slate-800">
+          <span class="text-slate-400 font-semibold block mb-1.5 text-indigo-400">Provenance Assertions Generated:</span>
+          <div class="space-y-1.5">
+            ${(data.provenance_assertions || []).map(a => `
+              <div class="bg-slate-950 p-2 rounded border border-slate-800 flex items-center justify-between">
+                <div>
+                  <span class="text-white font-semibold">${a.field}</span>: <span class="text-emerald-400 font-bold">${a.value}</span>
+                  <div class="text-[10px] text-slate-500">Source: ${a.source}</div>
+                </div>
+                <span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">Authority: ${a.authority}/100</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    // ---------------- TAB 5: RETRIEVAL & SEARCH ----------------
+    function setSearchQuery(q) {
+      document.getElementById('retrieval-query').value = q;
+      executeRetrievalSearch();
+    }
+
+    async function executeRetrievalSearch() {
+      const q = document.getElementById('retrieval-query').value.trim();
+      if (!q) return;
+
+      const container = document.getElementById('retrieval-results');
+      container.innerHTML = '<div class="text-xs text-slate-500 py-6 text-center">Searching shipments, documents, and messages...</div>';
+
+      try {
+        const res = await fetch('/api/v1/test-ui/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: q, limit: 10 })
+        });
+        const data = await res.json();
+        renderRetrievalResults(data);
+      } catch (err) {
+        alert("Search failed: " + err);
+      }
+    }
+
+    function renderRetrievalResults(data) {
+      const container = document.getElementById('retrieval-results');
+      if (!data.results || data.results.length === 0) {
+        container.innerHTML = `<div class="text-xs text-slate-500 py-8 text-center border border-dashed border-slate-800 rounded-lg">No results found for "${data.query}".</div>`;
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="text-xs text-slate-400 mb-2">Found ${data.total_results} matching items:</div>
+        ${data.results.map(r => `
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-3 hover:border-slate-700 transition">
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-semibold text-xs text-white flex items-center">
+                <span class="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold mr-2 ${getEntityTypeClass(r.entity_type)}">${r.entity_type}</span>
+                ${r.title}
+              </span>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-slate-900 text-emerald-400 border border-slate-800 font-mono">Score: ${r.relevance_score.toFixed(2)}</span>
+            </div>
+            <div class="text-xs text-slate-300 font-mono mt-1">${r.snippet}</div>
+            <div class="text-[10px] text-slate-500 mt-1.5">Entity ID: ${r.entity_id}</div>
+          </div>
+        `).join('')}
+      `;
+    }
+
+    function getEntityTypeClass(type) {
+      switch (type) {
+        case 'shipment': return 'bg-emerald-950 text-emerald-300 border border-emerald-800';
+        case 'document': return 'bg-indigo-950 text-indigo-300 border border-indigo-800';
+        case 'message': return 'bg-purple-950 text-purple-300 border border-purple-800';
+        default: return 'bg-slate-800 text-slate-300';
+      }
+    }
+
+    // ---------------- TAB 6: MULTI-SOURCE SIMULATOR ----------------
+    async function runMultiSourceSimulation() {
+      const btn = document.getElementById('btn-run-simulation');
+      const stepper = document.getElementById('simulation-stepper');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="animate-spin mr-1">⟳</span> Simulating 5-Step Lifecycle...';
+      stepper.innerHTML = '<div class="text-xs text-amber-400 py-8 text-center animate-pulse">Running autonomous progressive reconstruction sequence (Rate Con &rarr; Email &rarr; BOL &rarr; Reweigh &rarr; Invoice Discrepancy)...</div>';
+
+      try {
+        const res = await fetch('/api/v1/test-ui/simulate-multi-source', { method: 'POST' });
+        const data = await res.json();
+        renderSimulationResults(data);
+        refreshTables();
+        await loadConflictsBadge();
+      } catch (err) {
+        alert("Simulation failed: " + err);
+        stepper.innerHTML = '<div class="text-xs text-red-400 py-4 text-center">Simulation error occurred.</div>';
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>⚡ Run 1-Click Simulation</span>';
+      }
+    }
+
+    function renderSimulationResults(data) {
+      const stepper = document.getElementById('simulation-stepper');
+      stepper.innerHTML = `
+        <div class="bg-slate-900 border border-slate-800 rounded-lg p-3.5 flex items-center justify-between mb-4">
+          <div>
+            <span class="text-xs text-slate-400">Reconstructed Shipment:</span>
+            <strong class="text-white text-sm ml-1.5">${data.shipment_number}</strong>
+            <span class="text-xs text-slate-500 font-mono ml-2">(Load ID: ${data.load_id})</span>
+          </div>
+          <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-xs font-semibold">
+            ✓ 5 Information Sources Reconciled
+          </span>
+        </div>
+
+        <div class="space-y-3">
+          ${data.steps.map(s => `
+            <div class="bg-slate-950 border ${s.discrepancy_halted ? 'border-red-900/80 bg-red-950/10' : 'border-slate-800'} rounded-lg p-3.5 transition">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center space-x-2">
+                  <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${s.discrepancy_halted ? 'bg-red-950 text-red-300 border border-red-800' : 'bg-slate-800 text-white'}">
+                    ${s.step}
+                  </span>
+                  <strong class="text-xs ${s.discrepancy_halted ? 'text-red-400' : 'text-white'}">${s.source}</strong>
+                </div>
+                <div class="flex items-center space-x-2 text-xs">
+                  ${s.status ? `<span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-[11px]">${s.status}</span>` : ''}
+                  ${s.agreed_total ? `<span class="text-emerald-400 font-mono font-semibold">Agreed: $${s.agreed_total.toFixed(2)}</span>` : ''}
+                  ${s.weight_lbs ? `<span class="text-cyan-400 font-mono">${s.weight_lbs} lbs</span>` : ''}
+                </div>
+              </div>
+              <p class="text-xs text-slate-300 ml-8">${s.action}</p>
+              ${s.reasoning ? `<div class="mt-2 ml-8 p-2 rounded bg-slate-900 border border-slate-800 text-[11px] text-red-300 font-mono">${s.reasoning}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // ---------------- BOTTOM EXPLORER ----------------
     async function refreshTables() {
       try {
         const [shipRes, auditRes] = await Promise.all([
@@ -530,13 +1243,14 @@
               <td class="py-2 px-3">${s.carrier_name || '-'}</td>
               <td class="py-2 px-3 font-mono">${s.carrier_reference || '-'}</td>
               <td class="py-2 px-3 font-mono">${s.bol_number || '-'}</td>
-              <td class="py-2 px-3 text-slate-400">${s.origin?.city || ''}, ${s.origin?.state || ''} → ${s.destination?.city || ''}, ${s.destination?.state || ''}</td>
+              <td class="py-2 px-3 text-slate-400">${s.origin?.city || ''}, ${s.origin?.state || ''} &rarr; ${s.destination?.city || ''}, ${s.destination?.state || ''}</td>
               <td class="py-2 px-3 text-slate-400">${formatDate(s.pickup_date)}</td>
               <td class="py-2 px-3 text-slate-400">${formatDate(s.eta)}</td>
+              <td class="py-2 px-3 text-emerald-400 font-mono">${s.weight_lbs ? s.weight_lbs + ' lbs' : '-'}</td>
             </tr>
           `).join('');
         } else {
-          shipBody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-slate-500">No shipments found. Click "Reset / Seed Test Data" above.</td></tr>`;
+          shipBody.innerHTML = `<tr><td colspan="10" class="text-center py-4 text-slate-500">No shipments found. Click "Reset / Seed Test Data" above.</td></tr>`;
         }
 
         // Render Audit Log
@@ -574,7 +1288,7 @@
       return val.replace('T', ' ').slice(0, 16);
     }
 
-    function showTab(tab) {
+    function showBottomTab(tab) {
       const shipView = document.getElementById('table-shipments-view');
       const auditView = document.getElementById('table-audit-view');
       const btnShip = document.getElementById('tab-btn-shipments');

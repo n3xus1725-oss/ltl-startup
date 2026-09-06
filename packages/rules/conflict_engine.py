@@ -67,9 +67,9 @@ class ConflictEngine:
                 amt_b = float(val_b)
                 diff = abs(amt_b - amt_a)
                 if diff > 0.01:
-                    if diff >= 500.0:
+                    if diff >= 100.0:
                         severity = "critical"
-                    elif diff >= 100.0:
+                    elif diff >= 25.0:
                         severity = "high"
                     else:
                         severity = "medium"

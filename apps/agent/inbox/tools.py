@@ -17,6 +17,7 @@ ALLOWED_INBOX_TOOL_NAMES = [
     "send_email",
     "reply_to_thread",
     "create_exception",
+    "search_context",
 ]
 
 

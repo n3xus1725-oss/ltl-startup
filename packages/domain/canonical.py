@@ -116,6 +116,23 @@ class ShipmentPricing(BaseModel):
     fuel_surcharge: Optional[float] = None
     accessorials: List[AccessorialCharge] = Field(default_factory=list)
 
+    def __init__(self, **data):
+        if "total_agreed_rate" in data and "agreed_total" not in data:
+            data["agreed_total"] = data.pop("total_agreed_rate")
+        if "agreed_linehaul" in data and "linehaul" not in data:
+            data["linehaul"] = data.pop("agreed_linehaul")
+        if "total_billed_amount" in data and "billed_total" not in data:
+            data["billed_total"] = data.pop("total_billed_amount")
+        super().__init__(**data)
+
+    @property
+    def total_agreed_rate(self) -> Optional[float]:
+        return self.agreed_total
+
+    @property
+    def agreed_linehaul(self) -> Optional[float]:
+        return self.linehaul
+
 
 class CarrierDetails(BaseModel):
     carrier_name: Optional[str] = None

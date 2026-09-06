@@ -1,14 +1,18 @@
-"""Shipment repository."""
+from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from packages.domain.models import Shipment, ShipmentEvent
 from packages.storage.repositories.base import BaseRepository
+
+if TYPE_CHECKING:
+    from packages.domain.canonical import CanonicalShipment
+    from packages.domain.provenance import ProvenanceLedger
 
 
 class ShipmentRepository(BaseRepository[Shipment]):
@@ -186,6 +190,7 @@ class ShipmentRepository(BaseRepository[Shipment]):
             },
             "pricing": {
                 "agreed_total": float(shipment.total_charges) if shipment.total_charges is not None else None,
+                "total_agreed_rate": float(shipment.total_charges) if shipment.total_charges is not None else None,
             },
             "billing_references": {
                 "load_id": shipment.load_id,
@@ -208,6 +213,14 @@ class ShipmentRepository(BaseRepository[Shipment]):
         if not shipment:
             return None
 
+        # Ensure pricing dictionary has both keys if either is present
+        if "pricing" in canonical_data and isinstance(canonical_data["pricing"], dict):
+            p = canonical_data["pricing"]
+            rate = p.get("agreed_total") if p.get("agreed_total") is not None else p.get("total_agreed_rate")
+            if rate is not None:
+                p["total_agreed_rate"] = rate
+                p["agreed_total"] = rate
+
         shipment.canonical_data = canonical_data
         if provenance_ledger is not None:
             shipment.provenance_ledger = provenance_ledger
@@ -224,10 +237,9 @@ class ShipmentRepository(BaseRepository[Shipment]):
                 shipment.pallet_count = int(freight["pallet_count"])
 
             pricing = canonical_data.get("pricing") or {}
-            if "agreed_total" in pricing and pricing["agreed_total"] is not None:
-                shipment.total_charges = pricing["agreed_total"]
-            elif "billed_total" in pricing and pricing["billed_total"] is not None:
-                shipment.total_charges = pricing["billed_total"]
+            rate = pricing.get("agreed_total") if pricing.get("agreed_total") is not None else (pricing.get("total_agreed_rate") or pricing.get("billed_total"))
+            if rate is not None:
+                shipment.total_charges = float(rate)
 
             carrier = canonical_data.get("carrier") or {}
             if "carrier_name" in carrier and carrier["carrier_name"]:
@@ -246,3 +258,24 @@ class ShipmentRepository(BaseRepository[Shipment]):
         self.db.commit()
         self.db.refresh(shipment)
         return shipment
+
+    def get_provenance_ledger(
+        self, organization_id: uuid.UUID, shipment_id: uuid.UUID
+    ) -> Optional["ProvenanceLedger"]:
+        """Retrieve the typed ProvenanceLedger for a shipment."""
+        from packages.domain.provenance import ProvenanceLedger
+        shipment = self.get_by_id(organization_id, shipment_id)
+        if not shipment or not shipment.provenance_ledger:
+            return ProvenanceLedger()
+        return ProvenanceLedger.from_dict(shipment.provenance_ledger)
+
+    def get_canonical_model(
+        self, organization_id: uuid.UUID, shipment_id: uuid.UUID
+    ) -> Optional["CanonicalShipment"]:
+        """Retrieve the typed CanonicalShipment model for a shipment."""
+        from packages.domain.canonical import CanonicalShipment
+        data = self.get_canonical(organization_id, shipment_id)
+        if not data:
+            return None
+        return CanonicalShipment.model_validate(data)
+

@@ -24,10 +24,42 @@ class DocumentClassifier:
             "weigh ticket",
             "reweigh certificate",
         ]
-        if any(kw in combined for kw in scale_keywords) and ("tare" in lower_text or "gross" in lower_text or "scale" in lower_fn):
+        if any(kw in combined for kw in scale_keywords) and ("tare" in lower_text or "gross" in lower_text or "scale" in lower_fn or "scale" in lower_text):
             return "SCALE_TICKET"
 
-        # 2. Rate Confirmation / Tender
+        # 2. Freight Invoice
+        invoice_keywords = [
+            "freight invoice",
+            "carrier invoice",
+            "invoice #",
+            "invoice number",
+            "remit to",
+            "total due",
+            "amount due",
+            "balance due",
+            "payment terms",
+            "net 30",
+        ]
+        has_explicit_rc = any(
+            kw in combined
+            for kw in [
+                "rate confirmation",
+                "ratecon",
+                "rate con",
+                "load confirmation",
+                "broker carrier agreement",
+                "carrier rate agreement",
+            ]
+        )
+        if (
+            "invoice" in lower_fn
+            or "inv" in lower_fn
+            or "invoice" in lower_text
+            or any(kw in combined for kw in invoice_keywords)
+        ) and not has_explicit_rc:
+            return "INVOICE"
+
+        # 3. Rate Confirmation / Tender
         rate_con_keywords = [
             "rate confirmation",
             "ratecon",
@@ -43,7 +75,7 @@ class DocumentClassifier:
         if any(kw in combined for kw in rate_con_keywords):
             return "RATE_CONFIRMATION"
 
-        # 3. Proof of Delivery (POD)
+        # 4. Proof of Delivery (POD)
         pod_keywords = [
             "proof of delivery",
             "delivery receipt",
@@ -58,7 +90,7 @@ class DocumentClassifier:
         if "pod" in lower_fn or any(kw in combined for kw in pod_keywords):
             return "POD"
 
-        # 4. Bill of Lading (BOL)
+        # 5. Bill of Lading (BOL)
         bol_keywords = [
             "bill of lading",
             "uniform straight bill of lading",
@@ -73,20 +105,6 @@ class DocumentClassifier:
         ]
         if "bol" in lower_fn or "lading" in lower_fn or any(kw in combined for kw in bol_keywords):
             return "BOL"
-
-        # 5. Freight Invoice
-        invoice_keywords = [
-            "freight invoice",
-            "carrier invoice",
-            "invoice number",
-            "remit to",
-            "total due",
-            "amount due",
-            "payment terms",
-            "net 30",
-        ]
-        if "invoice" in lower_fn or "inv" in lower_fn or any(kw in combined for kw in invoice_keywords):
-            return "INVOICE"
 
         # 6. Fallback checks on filename
         if "bol" in lower_fn or "bill_of_lading" in lower_fn:

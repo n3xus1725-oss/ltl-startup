@@ -124,6 +124,7 @@ class InboxAgentService:
             entity_id=final_state.get("entity_id"),
             terminal_outcome=final_state.get("terminal_outcome", "completed"),
             decision=final_state.get("decision"),
+            reasoning=final_state.get("reasoning"),
             confidence=float(final_state.get("confidence", 1.0)),
             approval_state=final_state.get("approval_state", "none"),
             tools_available=final_state.get("tools_available", ALLOWED_INBOX_TOOL_NAMES),
