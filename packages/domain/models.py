@@ -386,3 +386,98 @@ class ShipmentConflict(Base):
         UniqueConstraint("organization_id", "shipment_id", "field_name", "idempotency_key", name="uq_conflicts_org_shp_field_idemp"),
     )
 
+
+class RateContract(Base):
+    """Carrier rate contract, lane rates, fuel formula, and accessorial schedules."""
+    __tablename__ = "rate_contracts"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    carrier_name = Column(String(255), nullable=False, index=True)
+    customer_name = Column(String(255), nullable=True, index=True)
+    contract_number = Column(String(100), nullable=False, index=True)
+    lane_origin_state = Column(String(50), nullable=True)
+    lane_origin_zip_prefix = Column(String(10), nullable=True)
+    lane_dest_state = Column(String(50), nullable=True)
+    lane_dest_zip_prefix = Column(String(10), nullable=True)
+    effective_start_date = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    effective_end_date = Column(DateTime(timezone=True), nullable=True)
+    rate_type = Column(String(50), nullable=False, default="flat")  # flat, per_mile, per_cwt
+    base_rate = Column(Float, nullable=False, default=0.0)
+    minimum_charge = Column(Float, nullable=False, default=0.0)
+    fuel_schedule = Column(JSON, nullable=True)  # {type: "percent"|"table", base_rate_percent: 15.0, formula: ...}
+    accessorial_schedule = Column(JSON, nullable=True)  # {detention: {rate_per_hour: 75, free_hours: 2}, ...}
+    class_rate_rules = Column(JSON, nullable=True)  # {min_density: 6.0, reclass_requires_cert: true}
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now(), nullable=False)
+
+    organization = relationship("Organization")
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "carrier_name", "contract_number", name="uq_contracts_org_carrier_num"),
+    )
+
+
+class CarrierInvoice(Base):
+    """Carrier freight invoice document and financial record."""
+    __tablename__ = "carrier_invoices"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    shipment_id = Column(Uuid(as_uuid=True), ForeignKey("shipments.id", ondelete="SET NULL"), nullable=True, index=True)
+    document_id = Column(Uuid(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True)
+    carrier_name = Column(String(255), nullable=False, index=True)
+    invoice_number = Column(String(100), nullable=False, index=True)
+    invoice_date = Column(DateTime(timezone=True), nullable=True)
+    due_date = Column(DateTime(timezone=True), nullable=True)
+    currency = Column(String(10), nullable=False, default="USD")
+    total_billed_amount = Column(Float, nullable=False, default=0.0)
+    linehaul_amount = Column(Float, nullable=False, default=0.0)
+    fuel_amount = Column(Float, nullable=False, default=0.0)
+    accessorial_amount = Column(Float, nullable=False, default=0.0)
+    weight_lbs = Column(Float, nullable=True)
+    freight_class = Column(String(50), nullable=True)
+    pallet_count = Column(Integer, nullable=True)
+    remit_to_address = Column(JSON, nullable=True)
+    line_items = Column(JSON, nullable=True)  # [{code, description, amount, quantity, unit_rate}]
+    status = Column(String(50), nullable=False, default="received")  # received, audited, disputed, approved, duplicate
+    audit_status = Column(String(50), nullable=False, default="pending")  # pending, clean, discrepant
+    idempotency_key = Column(String(255), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now(), nullable=False)
+
+    organization = relationship("Organization")
+    shipment = relationship("Shipment")
+    document = relationship("Document")
+    audit_findings = relationship("AuditFindingRecord", back_populates="invoice", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "carrier_name", "invoice_number", name="uq_invoices_org_carrier_num"),
+    )
+
+
+class AuditFindingRecord(Base):
+    """Deterministic or verified billing audit discrepancy finding."""
+    __tablename__ = "audit_findings"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    invoice_id = Column(Uuid(as_uuid=True), ForeignKey("carrier_invoices.id", ondelete="CASCADE"), nullable=False, index=True)
+    shipment_id = Column(Uuid(as_uuid=True), ForeignKey("shipments.id", ondelete="SET NULL"), nullable=True, index=True)
+    rule_id = Column(String(100), nullable=False, index=True)
+    rule_name = Column(String(255), nullable=False)
+    severity = Column(String(50), nullable=False, default="medium")  # critical, high, medium, low
+    expected_value = Column(JSON, nullable=True)
+    billed_value = Column(JSON, nullable=True)
+    discrepancy_amount = Column(Float, nullable=False, default=0.0)
+    reason = Column(Text, nullable=False)
+    confidence = Column(Float, nullable=False, default=1.0)
+    evidence = Column(JSON, nullable=True)
+    recommended_action = Column(String(100), nullable=True)
+    status = Column(String(50), nullable=False, default="open")  # open, disputed, waived, resolved
+    created_at = Column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now(), nullable=False)
+
+    invoice = relationship("CarrierInvoice", back_populates="audit_findings")
+

@@ -66,16 +66,23 @@ class NormalizedRateCon(BaseModel):
 
 class NormalizedInvoice(BaseModel):
     invoice_number: Optional[str] = None
+    carrier_name: Optional[str] = None
     load_id: Optional[str] = None
     bol_number: Optional[str] = None
     carrier_reference: Optional[str] = None
     invoice_date: Optional[str] = None
+    due_date: Optional[str] = None
     total_billed_amount: Optional[float] = None
     linehaul_amount: Optional[float] = None
     fuel_amount: Optional[float] = None
     accessorial_amount: Optional[float] = None
+    weight_lbs: Optional[float] = None
+    freight_class: Optional[str] = None
+    pallet_count: Optional[int] = None
+    remit_to: Optional[str] = None
+    line_items: List[Dict[str, Any]] = Field(default_factory=list)
+    accessorials: List[Dict[str, Any]] = Field(default_factory=list)
     currency: str = "USD"
-    due_date: Optional[str] = None
     raw_text: Optional[str] = None
 
 

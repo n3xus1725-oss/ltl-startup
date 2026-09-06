@@ -18,8 +18,10 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from apps.api.api.v1.conflicts import router as conflicts_router
 from apps.api.api.v1.connectors import router as connectors_router
+from apps.api.api.v1.contracts import router as contracts_router
 from apps.api.api.v1.documents import router as documents_router
 from apps.api.api.v1.events import router as events_v1_router
+from apps.api.api.v1.invoices import router as invoices_router
 from apps.api.api.v1.test_ui import router as test_ui_router
 from packages.domain.config import get_settings
 from packages.domain.logging import logger, setup_logging
@@ -105,6 +107,8 @@ app.include_router(connectors_router, prefix=settings.API_V1_PREFIX)
 app.include_router(test_ui_router, prefix=settings.API_V1_PREFIX)
 app.include_router(documents_router, prefix=settings.API_V1_PREFIX)
 app.include_router(conflicts_router, prefix=settings.API_V1_PREFIX)
+app.include_router(contracts_router, prefix=settings.API_V1_PREFIX)
+app.include_router(invoices_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/", tags=["Root"])

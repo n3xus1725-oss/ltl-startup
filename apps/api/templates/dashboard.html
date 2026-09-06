@@ -80,6 +80,9 @@
     <button onclick="switchMainTab('simulation')" id="main-tab-simulation" class="py-3 tab-inactive flex items-center space-x-1.5 text-amber-400">
       <span>🚀</span><span>6. Multi-Source Simulator (Exit Criteria)</span>
     </button>
+    <button onclick="switchMainTab('audit')" id="main-tab-audit" class="py-3 tab-inactive flex items-center space-x-1.5 text-emerald-400 font-semibold">
+      <span>💰</span><span>7. Billing Audit Engine (Phase 3)</span>
+    </button>
   </nav>
 
   <!-- Main Content Areas -->
@@ -428,6 +431,125 @@
       </div>
     </div>
 
+    <!-- TAB 7: BILLING AUDIT ENGINE (Phase 3.1 - 3.3) -->
+    <div id="section-audit" class="hidden flex flex-col space-y-6">
+      <!-- Header Banner -->
+      <div class="bg-gradient-to-r from-slate-900 via-emerald-950/40 to-slate-900 border border-emerald-900/50 rounded-xl p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-semibold text-white flex items-center">
+              <span class="text-xl mr-2">💰</span> Deterministic Billing Audit Engine (Phases 3.1 – 3.3)
+            </h2>
+            <p class="text-xs text-slate-400 mt-1 max-w-3xl">
+              Evaluates carrier freight invoices against agreed contracts, rate confirmations, scale tickets, and proof-of-delivery receipts using pure mathematical rules (Rule 22). Covers all 10 non-negotiable checks: duplicate invoices, linehaul mismatches, fuel surcharges, unsupported accessorials, certified weight variances, NMFC classes, reclassification fees, pallet discrepancies, and arithmetic sums.
+            </p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span class="text-[10px] px-2.5 py-1 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">Rule 22: Code Arithmetic</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Audit Layout (Grid: 5 cols input, 7 cols findings) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Left: Scenario Selector & Invoice Document Content -->
+        <div class="lg:col-span-5 flex flex-col space-y-4">
+          <!-- Scenario Selector Card -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-xs font-semibold text-white flex items-center">
+                <span class="mr-1.5">📋</span> Select Test Audit Scenario:
+              </label>
+              <span id="audit-rule-badge" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">Clean Baseline</span>
+            </div>
+            <select id="audit-scenario-select" onchange="onSelectAuditScenario()" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500">
+              <option value="scenario-clean">Clean Invoice (Matches Contract & Rate Con)</option>
+              <option value="scenario-duplicate">Rule 1: Duplicate Invoice Detection</option>
+              <option value="scenario-linehaul">Rule 2: Linehaul Rate Overcharge ($200 Over)</option>
+              <option value="scenario-fuel">Rule 3: Fuel Surcharge Discrepancy ($102.50 Over)</option>
+              <option value="scenario-accessorial">Rule 4: Unsupported Lumper & Detention Accessorials</option>
+              <option value="scenario-weight">Rule 5: Invoiced Weight Discrepancy (+1,750 lbs)</option>
+              <option value="scenario-reclass">Rule 6 & 7: Class Mismatch & Reclass Fee Upcharge</option>
+              <option value="scenario-pallets">Rule 8: Handling Unit / Pallet Discrepancy (+4 Pallets)</option>
+              <option value="scenario-arithmetic">Rule 10: Invoice Arithmetic Math Error ($250 Padding)</option>
+            </select>
+            <p id="audit-scenario-desc" class="text-[11px] text-slate-400 mt-2 italic">
+              Invoice matches contract linehaul ($1,650.00), fuel schedule (15% = $247.50), and stated total ($1,897.50).
+            </p>
+          </div>
+
+          <!-- Invoice Content Textarea -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex flex-col flex-1">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-white flex items-center">
+                <span class="mr-1.5">📄</span> Carrier Invoice Text / Payload:
+              </span>
+              <span class="text-[10px] text-slate-500 font-mono">Editable</span>
+            </div>
+            <textarea id="audit-invoice-text" rows="10" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500 leading-relaxed"></textarea>
+
+            <!-- Active Contract Baseline Information -->
+            <div class="mt-3 bg-slate-950 border border-slate-800/80 rounded-lg p-3 text-[11px]">
+              <div class="flex items-center justify-between text-slate-400 font-semibold mb-1">
+                <span>Contract Baseline (Estes Express CTR-ESTES-2026):</span>
+                <span class="text-emerald-400">Active</span>
+              </div>
+              <div class="grid grid-cols-2 gap-1 text-slate-300">
+                <div>Base Rate: <strong>$1,650.00 (Flat)</strong></div>
+                <div>Min Charge: <strong>$500.00</strong></div>
+                <div>Fuel Schedule: <strong>15.0% Linehaul</strong></div>
+                <div>Detention: <strong>$75/hr (2 hrs free)</strong></div>
+                <div>Verified Weight (Scale): <strong>16,450 lbs</strong></div>
+                <div>Agreed Class: <strong>Class 70</strong></div>
+              </div>
+            </div>
+
+            <button onclick="runAuditSimulation()" id="btn-run-audit" class="mt-4 w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-md shadow-emerald-950 flex items-center justify-center space-x-1.5">
+              <span>⚡ Run Deterministic Billing Audit</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Right: Audit Results, Severity Metrics & Structured Evidence Findings -->
+        <div class="lg:col-span-7 flex flex-col space-y-4">
+          <!-- Status Banner & Metric Cards -->
+          <div class="grid grid-cols-3 gap-3">
+            <div id="audit-status-card" class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+              <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Audit Verdict</span>
+              <div id="audit-verdict-text" class="text-sm font-bold text-slate-400 mt-1">Pending Run</div>
+              <span id="audit-verdict-sub" class="text-[10px] text-slate-500 mt-0.5">Click run audit</span>
+            </div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+              <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Discrepancy Overcharge</span>
+              <div id="audit-discrepancy-amount" class="text-lg font-bold text-slate-300 font-mono mt-1">$0.00</div>
+              <span class="text-[10px] text-slate-500 mt-0.5">Disputed amount</span>
+            </div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+              <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Findings Flagged</span>
+              <div id="audit-findings-count" class="text-lg font-bold text-slate-300 font-mono mt-1">0</div>
+              <span class="text-[10px] text-slate-500 mt-0.5">Deterministic rules</span>
+            </div>
+          </div>
+
+          <!-- Structured Findings Table -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex-1 flex flex-col">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+              <h3 class="text-xs font-semibold text-white flex items-center">
+                <span class="mr-1.5">⚖️</span> Structured Evidence Findings Ledger:
+              </h3>
+              <span class="text-[10px] text-slate-400 font-mono" id="audit-timestamp">Ready</span>
+            </div>
+
+            <div id="audit-findings-container" class="space-y-3 flex-1 overflow-y-auto max-h-[520px]">
+              <div class="text-xs text-slate-500 py-16 text-center border border-dashed border-slate-800 rounded-lg">
+                Select a scenario and click <strong class="text-emerald-400">"Run Deterministic Billing Audit"</strong> to inspect financial rule evidence.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </main>
 
   <!-- Bottom Explorer: Supabase Live Tables -->
@@ -496,7 +618,7 @@
 
     // Tab switcher
     function switchMainTab(tab) {
-      ['inbox', 'canonical', 'conflicts', 'documents', 'retrieval', 'simulation'].forEach(t => {
+      ['inbox', 'canonical', 'conflicts', 'documents', 'retrieval', 'simulation', 'audit'].forEach(t => {
         const sec = document.getElementById('section-' + t);
         const btn = document.getElementById('main-tab-' + t);
         if (t === tab) {
@@ -511,6 +633,7 @@
       if (tab === 'canonical') loadCanonicalShipmentsDropdown();
       if (tab === 'conflicts') loadConflicts();
       if (tab === 'documents' && !document.getElementById('doc-content').value) loadSampleDoc('bol');
+      if (tab === 'audit') loadAuditScenarios();
     }
 
     async function loadState() {
@@ -1216,6 +1339,142 @@ Received in good order and condition.`
           `).join('')}
         </div>
       `;
+    }
+
+    // ---------------- TAB 7: BILLING AUDIT ENGINE (Phase 3) ----------------
+    let auditScenarios = [];
+
+    async function loadAuditScenarios() {
+      try {
+        if (auditScenarios.length === 0) {
+          const res = await fetch('/api/v1/test-ui/billing-audit/scenarios');
+          auditScenarios = await res.json();
+          const select = document.getElementById('audit-scenario-select');
+          select.innerHTML = auditScenarios.map(s => `
+            <option value="${s.id}">${s.title}</option>
+          `).join('');
+        }
+        onSelectAuditScenario();
+      } catch (err) {
+        console.error("Failed to load audit scenarios:", err);
+      }
+    }
+
+    function onSelectAuditScenario() {
+      const select = document.getElementById('audit-scenario-select');
+      const scenarioId = select.value;
+      const scenario = auditScenarios.find(s => s.id === scenarioId) || auditScenarios[0];
+      if (!scenario) return;
+
+      document.getElementById('audit-scenario-desc').innerText = scenario.description;
+      const rules = scenario.expected_rules || [];
+      document.getElementById('audit-rule-badge').innerText = rules.length > 0 ? rules.join(', ') : 'Clean Baseline';
+      document.getElementById('audit-invoice-text').value = (scenario.invoice_text || '').trim();
+    }
+
+    async function runAuditSimulation() {
+      const btn = document.getElementById('btn-run-audit');
+      const select = document.getElementById('audit-scenario-select');
+      const invoiceText = document.getElementById('audit-invoice-text').value;
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="animate-spin mr-1">⟳</span> Evaluating Deterministic Rules (Rule 22)...';
+
+      try {
+        const res = await fetch('/api/v1/test-ui/billing-audit/simulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scenario_id: select.value,
+            custom_text: invoiceText
+          })
+        });
+        const data = await res.json();
+        renderAuditResults(data);
+        refreshTables();
+      } catch (err) {
+        alert("Billing audit simulation error: " + err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>⚡ Run Deterministic Billing Audit</span>';
+      }
+    }
+
+    function renderAuditResults(data) {
+      const card = document.getElementById('audit-status-card');
+      const verdictText = document.getElementById('audit-verdict-text');
+      const verdictSub = document.getElementById('audit-verdict-sub');
+      const discEl = document.getElementById('audit-discrepancy-amount');
+      const countEl = document.getElementById('audit-findings-count');
+      const tsEl = document.getElementById('audit-timestamp');
+      const container = document.getElementById('audit-findings-container');
+
+      tsEl.innerText = new Date().toLocaleTimeString();
+
+      if (data.is_clean) {
+        card.className = 'bg-emerald-950/40 border border-emerald-800 rounded-xl p-3.5 flex flex-col justify-between';
+        verdictText.innerText = '✓ AUDIT PASSED';
+        verdictText.className = 'text-sm font-bold text-emerald-400 mt-1';
+        verdictSub.innerText = 'No variances. Auto-pay approved.';
+        discEl.innerText = '$0.00';
+        discEl.className = 'text-lg font-bold text-emerald-400 font-mono mt-1';
+        countEl.innerText = '0';
+        countEl.className = 'text-lg font-bold text-emerald-400 font-mono mt-1';
+
+        container.innerHTML = `
+          <div class="bg-emerald-950/20 border border-emerald-800/80 rounded-lg p-6 text-center space-y-2">
+            <div class="text-3xl">✅</div>
+            <div class="text-sm font-semibold text-emerald-300">Clean Invoice - All 10 Deterministic Audit Rules Passed</div>
+            <div class="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">
+              Linehaul rate ($1,650.00), fuel surcharge (15% = $247.50), verified scale weight (16,450 lbs), NMFC class (70), pallet count (12), and line-item math sum identically match agreed rate contract (CTR-ESTES-2026) and delivery receipts within 0.00% variance.
+            </div>
+            <div class="inline-block mt-2 px-3 py-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-[11px] font-mono">
+              Status: Ready for Payment Scheduling
+            </div>
+          </div>
+        `;
+      } else {
+        card.className = 'bg-red-950/40 border border-red-800 rounded-xl p-3.5 flex flex-col justify-between';
+        verdictText.innerText = '⚠️ DISCREPANCIES FLAGGED';
+        verdictText.className = 'text-sm font-bold text-red-400 mt-1';
+        verdictSub.innerText = 'Hold for dispute resolution.';
+        discEl.innerText = '$' + (data.total_discrepancy || 0).toFixed(2);
+        discEl.className = 'text-lg font-bold text-red-400 font-mono mt-1';
+        countEl.innerText = '' + data.findings_count;
+        countEl.className = 'text-lg font-bold text-red-400 font-mono mt-1';
+
+        const findings = data.report?.findings || [];
+        container.innerHTML = findings.map(f => {
+          const isCritical = f.severity === 'critical';
+          const isHigh = f.severity === 'high';
+          const badgeClass = isCritical
+            ? 'bg-red-950 text-red-300 border-red-800'
+            : isHigh
+              ? 'bg-amber-950 text-amber-300 border-amber-800'
+              : 'bg-slate-800 text-slate-300 border-slate-700';
+
+          return `
+            <div class="bg-slate-950 border border-red-900/60 rounded-lg p-3.5 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span class="text-xs font-mono font-bold text-red-400">${f.rule_id}</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded border uppercase font-mono ${badgeClass}">${f.severity}</span>
+                </div>
+                ${f.difference != null && Math.abs(f.difference) > 0 ? `<span class="text-xs font-mono font-bold text-red-400">Variance: +$${Math.abs(f.difference).toFixed(2)}</span>` : ''}
+              </div>
+              <div class="text-xs text-slate-200 font-medium">${f.reason}</div>
+              <div class="grid grid-cols-2 gap-2 bg-slate-900 border border-slate-800 rounded p-2 text-[11px] font-mono">
+                <div><span class="text-slate-500">Expected:</span> <span class="text-emerald-400">${typeof f.expected_value === 'object' ? JSON.stringify(f.expected_value) : f.expected_value}</span></div>
+                <div><span class="text-slate-500">Billed:</span> <span class="text-red-400">${typeof f.billed_value === 'object' ? JSON.stringify(f.billed_value) : f.billed_value}</span></div>
+              </div>
+              <div class="flex items-center justify-between text-[10px] text-slate-500">
+                <div>Source Docs: <span class="text-slate-400">${(f.source_documents || []).join(', ') || 'N/A'}</span></div>
+                <div>Confidence: <span class="text-emerald-400 font-mono">100% (Rule 22 Code Arithmetic)</span></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
     }
 
     // ---------------- BOTTOM EXPLORER ----------------

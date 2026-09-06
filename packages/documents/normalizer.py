@@ -112,22 +112,62 @@ class DocumentNormalizer:
 
     @staticmethod
     def normalize_invoice(text: str) -> NormalizedInvoice:
-        inv_num = DocumentNormalizer._extract_number(r"(?:Invoice|Invoice #|Inv #)[#:\s-]*([A-Z0-9-]{3,30})", text)
-        load_id = DocumentNormalizer._extract_number(r"(?:Load|Load ID|PO #|Order #)[#:\s-]*([A-Z0-9-]{4,20})", text)
-        bol_num = DocumentNormalizer._extract_number(r"(?:BOL|Bill of Lading)[#:\s-]*([A-Z0-9-]{4,30})", text)
-        carrier_ref = DocumentNormalizer._extract_number(r"(?:PRO|PRO #|Carrier Ref)[#:\s-]*([A-Z0-9-]{4,30})", text)
-        total = DocumentNormalizer._extract_amount(r"(?:Total Due|Total Amount|Invoice Total|Amount Due|Balance Due|Total)[#:\s-]*\$?([0-9,.]+)", text)
-        linehaul = DocumentNormalizer._extract_amount(r"(?:Linehaul(?:\s*Rate|\s*Amount)?|Freight Charge|Base Rate)[#:\s-]*\$?([0-9,.]+)", text)
-        fuel = DocumentNormalizer._extract_amount(r"(?:Fuel|Fuel Surcharge|FSC)[#:\s-]*\$?([0-9,.]+)", text)
+        inv_num = DocumentNormalizer._extract_number(r"(?:Invoice\s*#|Invoice\s*Number|Invoice\s*No\.?|Inv\s*#)[ \t]*[:#-]*[ \t]*([A-Z0-9-]{3,30})", text)
+        if not inv_num:
+            inv_num = DocumentNormalizer._extract_number(r"(?:^|\n)[ \t]*Invoice[ \t]*[:#-]+[ \t]*([A-Z0-9-]{3,30})", text)
+        carrier_name = DocumentNormalizer._extract_number(r"(?:Carrier|Carrier Name|From|Bill From)[ \t]*[:#-]+[ \t]*([A-Za-z0-9\s.,&-]{3,40})(?:\r?\n|$)", text)
+        load_id = DocumentNormalizer._extract_number(r"(?:Load\s*#|Load\s*ID|Load|PO\s*#|Order\s*#)[ \t]*[:#-]*[ \t]*([A-Z0-9-]{4,20})", text)
+        bol_num = DocumentNormalizer._extract_number(r"(?:BOL\s*#|BOL|Bill of Lading)[ \t]*[:#-]*[ \t]*([A-Z0-9-]{4,30})", text)
+        carrier_ref = DocumentNormalizer._extract_number(r"(?:PRO\s*#|PRO|Carrier Ref)[ \t]*[:#-]*[ \t]*([A-Z0-9-]{4,30})", text)
+        total = DocumentNormalizer._extract_amount(r"(?:Total Due|Total Amount|Invoice Total|Amount Due|Balance Due|Total)[ \t]*[:#-]*[ \t]*\$?([0-9,.]+)", text)
+        linehaul = DocumentNormalizer._extract_amount(r"(?:Linehaul(?:\s*Rate|\s*Amount)?|Freight Charge|Base Rate)[ \t]*[:#-]*[ \t]*\$?([0-9,.]+)", text)
+        fuel = DocumentNormalizer._extract_amount(r"(?:Fuel|Fuel Surcharge|FSC)[ \t]*[:#-]*[ \t]*\$?([0-9,.]+)", text)
+        weight = DocumentNormalizer._extract_float(r"(?:Billed Weight|Weight|Total Weight|Actual Weight)[#:\s-]*([0-9,.]+)\s*(?:lbs|lb)?", text)
+        f_class = DocumentNormalizer._extract_number(r"(?:Class|Freight Class|NMFC Class)[#:\s-]*([0-9.]{2,6})", text)
+        pallets = DocumentNormalizer._extract_float(r"(?:Pallet Count|Pallets|PLT)[#:\s-]*([0-9]+)", text)
+
+        # Detect itemized accessorials
+        accessorials = []
+        acc_patterns = [
+            ("DETENTION", "Detention Charge", r"(?:Detention(?:\s*Charge)?|Wait\s*Time)[ \t]*[:#-]*[ \t]*\$?([0-9,.]+)"),
+            ("LUMPER", "Lumper Fee", r"(?:Lumper(?:\s*Fee)?|Unloading(?:\s*Fee)?)[ \t]*[:#-]*[ \t]*\$?([0-9,.]+)"),
+            ("LIFTGATE", "Liftgate Service", r"(?:Liftgate(?:\s*Service|\s*Fee)?|Lift\s*Gate)[ \t]*[:#-]*[ \t]*\$?([0-9,.]+)"),
+            ("RESIDENTIAL", "Residential Delivery", r"(?:Residential(?:\s*Delivery|\s*Pickup|\s*Fee)?)[ \t]*[:#-]*[ \t]*\$?([0-9,.]+)"),
+            ("LAYOVER", "Layover Fee", r"(?:Layover(?:\s*Fee)?)[ \t]*[:#-]*[ \t]*\$?([0-9,.]+)"),
+            ("INSIDE_DELIVERY", "Inside Delivery", r"(?:Inside\s*Delivery(?:\s*Fee)?)[ \t]*[:#-]*[ \t]*\$?([0-9,.]+)"),
+            ("RECLASS_FEE", "Reclass / Inspection Fee", r"(?:Reclass(?:\s*Fee)?|Inspection\s*Fee|Reweigh(?:\s*Fee)?)[ \t]*[:#-]*[ \t]*\$?([0-9,.]+)"),
+        ]
+        for code, name, pat in acc_patterns:
+            amt = DocumentNormalizer._extract_amount(pat, text)
+            if amt and amt > 0:
+                accessorials.append({"code": code, "name": name, "amount": amt})
+
+        acc_total = sum(a["amount"] for a in accessorials) if accessorials else 0.0
+
+        # Build itemized lines
+        line_items = []
+        if linehaul:
+            line_items.append({"code": "LINEHAUL", "description": "Freight Linehaul", "amount": linehaul})
+        if fuel:
+            line_items.append({"code": "FUEL", "description": "Fuel Surcharge", "amount": fuel})
+        for a in accessorials:
+            line_items.append({"code": a["code"], "description": a["name"], "amount": a["amount"]})
 
         return NormalizedInvoice(
             invoice_number=inv_num,
+            carrier_name=carrier_name.strip() if carrier_name else None,
             load_id=load_id,
             bol_number=bol_num,
             carrier_reference=carrier_ref,
             total_billed_amount=total or (linehaul if linehaul else None),
             linehaul_amount=linehaul or (total if total else None),
             fuel_amount=fuel,
+            accessorial_amount=acc_total,
+            weight_lbs=weight,
+            freight_class=f_class,
+            pallet_count=int(pallets) if pallets else None,
+            line_items=line_items,
+            accessorials=accessorials,
             raw_text=text[:2000],
         )
 

@@ -731,3 +731,320 @@ async def simulate_multi_source_reconstruction(
         "final_canonical": c_after_inv,
         "provenance_ledger": shp_repo.get_provenance_ledger(org.id, shp.id).to_dict(),
     }
+
+
+# Phase 3 Billing Audit Preloaded Scenarios
+BILLING_AUDIT_SCENARIOS = [
+    {
+        "id": "scenario-clean",
+        "title": "Clean Invoice (Zero Discrepancies)",
+        "description": "Invoice matches contract linehaul ($1,650.00), fuel schedule (15% = $247.50), and stated total ($1,897.50).",
+        "expected_rules": [],
+        "carrier": "Estes Express Lines",
+        "invoice_number": "INV-CLEAN-101",
+        "invoice_text": """CARRIER FREIGHT INVOICE
+Invoice #: INV-CLEAN-101
+Carrier: Estes Express Lines
+Load #: 9001
+Linehaul Rate: $1,650.00
+Fuel Surcharge: $247.50
+Total Due: $1,897.50
+Weight: 16,450 lbs
+Class: 70
+Pallets: 12
+""",
+    },
+    {
+        "id": "scenario-duplicate",
+        "title": "Rule 1: Duplicate Invoice Detection",
+        "description": "Carrier submits an invoice with the identical invoice number as a previously processed payment.",
+        "expected_rules": ["RULE_01_DUPLICATE_INVOICE"],
+        "carrier": "Estes Express Lines",
+        "invoice_number": "INV-DUP-999",
+        "invoice_text": """CARRIER FREIGHT INVOICE
+Invoice #: INV-DUP-999
+Carrier: Estes Express Lines
+Load #: 9001
+Linehaul Rate: $1,650.00
+Total Due: $1,650.00
+""",
+    },
+    {
+        "id": "scenario-linehaul",
+        "title": "Rule 2: Linehaul Rate Overcharge",
+        "description": "Carrier bills $1,850.00 linehaul when contract and rate con agreed linehaul is $1,650.00 ($200.00 overcharge).",
+        "expected_rules": ["RULE_02_LINEHAUL_MISMATCH", "RULE_09_QUOTE_VERSUS_INVOICE_MISMATCH"],
+        "carrier": "Estes Express Lines",
+        "invoice_number": "INV-LH-202",
+        "invoice_text": """CARRIER FREIGHT INVOICE
+Invoice #: INV-LH-202
+Carrier: Estes Express Lines
+Load #: 9001
+Linehaul Rate: $1,850.00
+Fuel Surcharge: $247.50
+Total Due: $2,097.50
+""",
+    },
+    {
+        "id": "scenario-fuel",
+        "title": "Rule 3: Fuel Surcharge Discrepancy",
+        "description": "Carrier bills $350.00 fuel surcharge when contract formula (15% of $1,650) is $247.50 ($102.50 overcharge).",
+        "expected_rules": ["RULE_03_FUEL_MISMATCH"],
+        "carrier": "Estes Express Lines",
+        "invoice_number": "INV-FUEL-303",
+        "invoice_text": """CARRIER FREIGHT INVOICE
+Invoice #: INV-FUEL-303
+Carrier: Estes Express Lines
+Load #: 9001
+Linehaul Rate: $1,650.00
+Fuel Surcharge: $350.00
+Total Due: $2,000.00
+""",
+    },
+    {
+        "id": "scenario-accessorial",
+        "title": "Rule 4: Unsupported / Unverified Accessorials",
+        "description": "Carrier bills $175.00 lumper fee with no receipt attached + $150.00 detention fee without timestamp proof.",
+        "expected_rules": ["RULE_04_UNSUPPORTED_ACCESSORIAL"],
+        "carrier": "Estes Express Lines",
+        "invoice_number": "INV-ACC-404",
+        "invoice_text": """CARRIER FREIGHT INVOICE
+Invoice #: INV-ACC-404
+Carrier: Estes Express Lines
+Load #: 9001
+Linehaul Rate: $1,650.00
+Fuel Surcharge: $247.50
+Lumper Fee: $175.00
+Detention Charge: $150.00
+Total Due: $2,222.50
+""",
+    },
+    {
+        "id": "scenario-weight",
+        "title": "Rule 5: Invoiced Weight Discrepancy",
+        "description": "Carrier bills for 18,200 lbs when certified scale ticket records net weight of 16,450 lbs (1,750 lbs variance).",
+        "expected_rules": ["RULE_05_WEIGHT_MISMATCH"],
+        "carrier": "Estes Express Lines",
+        "invoice_number": "INV-WT-505",
+        "invoice_text": """CARRIER FREIGHT INVOICE
+Invoice #: INV-WT-505
+Carrier: Estes Express Lines
+Load #: 9001
+Billed Weight: 18,200 lbs
+Linehaul Rate: $1,650.00
+Total Due: $1,650.00
+""",
+    },
+    {
+        "id": "scenario-reclass",
+        "title": "Rule 6 & 7: Class Mismatch & Reclassification Fee",
+        "description": "Carrier upclasses freight from Class 70 to Class 100 and assesses an $85.00 reclass fee without certified inspection certificate.",
+        "expected_rules": ["RULE_06_CLASS_MISMATCH", "RULE_07_RECLASS_DISCREPANCY"],
+        "carrier": "Estes Express Lines",
+        "invoice_number": "INV-CLS-606",
+        "invoice_text": """CARRIER FREIGHT INVOICE
+Invoice #: INV-CLS-606
+Carrier: Estes Express Lines
+Load #: 9001
+Freight Class: 100
+Reclass Fee: $85.00
+Linehaul Rate: $1,650.00
+Total Due: $1,735.00
+""",
+    },
+    {
+        "id": "scenario-pallets",
+        "title": "Rule 8: Handling Unit / Pallet Discrepancy",
+        "description": "Carrier bills for 16 pallets when signed BOL and POD confirm 12 pallets received (4 pallet discrepancy).",
+        "expected_rules": ["RULE_08_DIMENSION_PALLET_DISCREPANCY"],
+        "carrier": "Estes Express Lines",
+        "invoice_number": "INV-PLT-707",
+        "invoice_text": """CARRIER FREIGHT INVOICE
+Invoice #: INV-PLT-707
+Carrier: Estes Express Lines
+Load #: 9001
+Pallet Count: 16
+Linehaul Rate: $1,650.00
+Total Due: $1,650.00
+""",
+    },
+    {
+        "id": "scenario-arithmetic",
+        "title": "Rule 10: Invoice Arithmetic Total Mismatch",
+        "description": "Linehaul ($1,650.00) + Fuel ($250.00) = $1,900.00, but carrier stated total is $2,150.00 ($250.00 unexplained padding).",
+        "expected_rules": ["RULE_10_ARITHMETIC_TOTAL_MISMATCH"],
+        "carrier": "Estes Express Lines",
+        "invoice_number": "INV-MATH-808",
+        "invoice_text": """CARRIER FREIGHT INVOICE
+Invoice #: INV-MATH-808
+Carrier: Estes Express Lines
+Load #: 9001
+Linehaul Rate: $1,650.00
+Fuel Surcharge: $250.00
+Total Due: $2,150.00
+""",
+    },
+]
+
+
+@router.get("/billing-audit/scenarios")
+def get_billing_audit_scenarios() -> List[Dict[str, Any]]:
+    """Return preloaded billing audit test scenarios covering all 10 deterministic rules."""
+    return BILLING_AUDIT_SCENARIOS
+
+
+class AuditSimulateRequest(BaseModel):
+    scenario_id: str
+    custom_text: Optional[str] = None
+
+
+@router.post("/billing-audit/simulate")
+def simulate_billing_audit(
+    payload: AuditSimulateRequest,
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Execute end-to-end billing audit simulation for a preloaded scenario."""
+    from packages.documents.normalizer import DocumentNormalizer
+    from packages.rules.audit_engine import DeterministicAuditEngine
+    from packages.storage.repositories.contracts import RateContractRepository
+    from packages.storage.repositories.invoices import InvoiceRepository
+    from packages.storage.repositories.shipments import ShipmentRepository
+
+    org = get_or_create_test_org(db)
+    shp_repo = ShipmentRepository(db)
+    contract_repo = RateContractRepository(db)
+    inv_repo = InvoiceRepository(db)
+
+    # 1. Find scenario
+    scenario = next((s for s in BILLING_AUDIT_SCENARIOS if s["id"] == payload.scenario_id), BILLING_AUDIT_SCENARIOS[0])
+    text_to_audit = payload.custom_text or scenario["invoice_text"]
+
+    # 2. Ensure baseline Rate Contract exists
+    contract = contract_repo.find_matching_contract(org.id, "Estes Express")
+    if not contract:
+        contract = contract_repo.create_contract(
+            organization_id=org.id,
+            carrier_name="Estes Express Lines",
+            contract_number="CTR-ESTES-2026",
+            base_rate=1650.0,
+            minimum_charge=500.0,
+            rate_type="flat",
+            fuel_schedule={"type": "percent", "base_rate_percent": 15.0},
+            accessorial_schedule={
+                "DETENTION": {"rate_per_hour": 75.0, "free_hours": 2},
+                "LIFTGATE": {"flat": 100.0},
+                "RESIDENTIAL": {"flat": 85.0},
+            },
+        )
+
+    # 3. Ensure baseline Shipment exists
+    shp = shp_repo.get_by_shipment_number(org.id, "LOAD-9001")
+    if not shp:
+        shp = shp_repo.create(
+            organization_id=org.id,
+            shipment_number="LOAD-9001",
+            load_id="9001",
+            status="delivered",
+            total_charges=1897.50,
+        )
+        shp_repo.update_canonical(
+            org.id,
+            shp.id,
+            canonical_data={
+                "organization_id": str(org.id),
+                "shipment_number": "LOAD-9001",
+                "status": "delivered",
+                "pricing": {
+                    "agreed_linehaul": 1650.0,
+                    "fuel_surcharge": 247.50,
+                    "agreed_total": 1897.50,
+                },
+                "freight_details": {
+                    "total_weight_lbs": 16450.0,
+                    "pallet_count": 12,
+                    "freight_class": "70",
+                },
+            },
+            provenance_ledger={"entries": {}},
+        )
+
+    # If duplicate scenario, seed prior invoice first
+    existing_invoices = []
+    if payload.scenario_id == "scenario-duplicate":
+        prior_inv = inv_repo.get_by_number(org.id, "Estes Express Lines", "INV-DUP-999")
+        if not prior_inv:
+            prior_inv = inv_repo.create_invoice(
+                organization_id=org.id,
+                carrier_name="Estes Express Lines",
+                invoice_number="INV-DUP-999",
+                total_billed_amount=1650.0,
+                status="paid",
+            )
+        existing_invoices.append({
+            "id": str(prior_inv.id),
+            "invoice_number": prior_inv.invoice_number,
+            "carrier_name": prior_inv.carrier_name,
+            "total_billed_amount": prior_inv.total_billed_amount,
+            "status": prior_inv.status,
+        })
+
+    # 4. Parse invoice text
+    normalized = DocumentNormalizer.normalize_invoice(text_to_audit)
+    inv_dict = {
+        "invoice_number": normalized.invoice_number or scenario["invoice_number"],
+        "carrier_name": normalized.carrier_name or scenario["carrier"],
+        "total_billed_amount": normalized.total_billed_amount or 1650.0,
+        "linehaul_amount": normalized.linehaul_amount or 1650.0,
+        "fuel_amount": normalized.fuel_amount or 0.0,
+        "accessorial_amount": normalized.accessorial_amount or 0.0,
+        "weight_lbs": normalized.weight_lbs,
+        "freight_class": normalized.freight_class,
+        "pallet_count": normalized.pallet_count,
+        "line_items": normalized.line_items,
+        "accessorials": normalized.accessorials,
+    }
+
+    # Baseline verified documents
+    bol_dict = {"nmfc_class": "70", "total_weight_lbs": 16450.0, "pallet_count": 12}
+    scale_dict = {"net_weight_lbs": 16450.0}
+    pod_dict = {"piece_count_received": 12}
+    attached_docs = ["BILL_OF_LADING", "PROOF_OF_DELIVERY"]
+
+    contract_dict = {
+        "contract_number": contract.contract_number,
+        "base_rate": contract.base_rate,
+        "minimum_charge": contract.minimum_charge,
+        "rate_type": contract.rate_type,
+        "fuel_schedule": contract.fuel_schedule,
+        "accessorial_schedule": contract.accessorial_schedule,
+    }
+
+    shipment_dict = {
+        "id": str(shp.id),
+        "shipment_number": shp.shipment_number,
+        "canonical_data": shp.canonical_data or {},
+    }
+
+    # 5. Run Deterministic Audit Engine
+    engine = DeterministicAuditEngine()
+    report = engine.audit_invoice(
+        invoice=inv_dict,
+        shipment=shipment_dict,
+        contract=contract_dict,
+        scale_ticket=scale_dict,
+        bol=bol_dict,
+        pod=pod_dict,
+        existing_invoices=existing_invoices,
+        attached_document_types=attached_docs,
+    )
+
+    return {
+        "scenario_id": scenario["id"],
+        "scenario_title": scenario["title"],
+        "invoice_parsed": inv_dict,
+        "contract_used": contract_dict,
+        "report": report.model_dump(),
+        "is_clean": report.is_clean,
+        "total_discrepancy": report.total_discrepancy_amount,
+        "findings_count": len(report.findings),
+    }
