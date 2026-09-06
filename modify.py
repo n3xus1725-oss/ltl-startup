@@ -1,4 +1,3 @@
-import sys
 
 def modify_test_ui():
     with open(r'c:\Users\krish\Downloads\logistics\apps\api\api\v1\test_ui.py', 'a', encoding='utf-8') as f:

@@ -6,7 +6,7 @@ If CREDENTIALS_ENCRYPTION_KEY is not set, falls back to base64 encoding
 import base64
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 

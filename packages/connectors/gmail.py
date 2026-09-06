@@ -15,10 +15,10 @@ from typing import Any, Dict, List, Optional
 import httpx
 from sqlalchemy.orm import Session
 
-from packages.storage.credentials_crypto import decrypt_credentials
 from packages.domain.config import get_settings
 from packages.domain.logging import logger
 from packages.domain.models import InboxConnection
+from packages.storage.credentials_crypto import decrypt_credentials
 from packages.storage.repositories.documents import DocumentRepository
 from packages.storage.repositories.messages import MessageRepository
 

@@ -8,8 +8,6 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from packages.storage.credentials_crypto import encrypt_credentials
-
 from apps.agent.inbox.service import InboxAgentService
 from apps.agent.inbox.validators import InboxAgentInput
 from packages.connectors.gmail import GmailConnector
@@ -18,6 +16,7 @@ from packages.domain.dispatcher import EventDispatcher
 from packages.domain.events import InboundEventPayload
 from packages.domain.logging import logger
 from packages.domain.models import Organization
+from packages.storage.credentials_crypto import encrypt_credentials
 from packages.storage.db import get_db
 from packages.storage.repositories.inbox_connections import InboxConnectionRepository
 
@@ -86,7 +85,7 @@ async def gmail_oauth_callback(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing authorization code")
 
     settings = get_settings()
-    
+
     org_id = None
     if state:
         try:
