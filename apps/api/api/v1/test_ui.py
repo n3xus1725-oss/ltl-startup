@@ -163,10 +163,8 @@ def get_testing_state(db: Session = Depends(get_db)):
     """Retrieve test environment state, available emails, and system metrics."""
     db_connected = check_db_connection()
     org = get_or_create_test_org(db)
-    # Auto-seed if empty
-    shipments = seed_test_shipments_internal(db, org.id)
-
-    all_emails = PRELOADED_EMAILS + _INJECTED_EMAILS
+    
+    shipment_count = db.query(Shipment).filter(Shipment.organization_id == org.id).count()
 
     return {
         "status": "ready",
@@ -176,51 +174,23 @@ def get_testing_state(db: Session = Depends(get_db)):
             "name": org.name,
             "slug": org.slug,
         },
-        "shipment_count": len(shipments),
-        "preloaded_emails": all_emails,
+        "shipment_count": shipment_count,
+        "preloaded_emails": [],
     }
 
 
 @router.post("/seed")
 def seed_shipments(db: Session = Depends(get_db)):
     """Seed or reset test shipments in the database."""
-    org = get_or_create_test_org(db)
-    # Clear existing demo shipments and recreate
-    db.query(Shipment).filter(Shipment.organization_id == org.id).delete()
-    db.commit()
-    shipments = seed_test_shipments_internal(db, org.id)
-
-    return {
-        "status": "seeded",
-        "count": len(shipments),
-        "shipments": [
-            {
-                "id": str(s.id),
-                "load_id": s.load_id,
-                "shipment_number": s.shipment_number,
-                "carrier_name": s.carrier_name,
-                "carrier_reference": s.carrier_reference,
-                "bol_number": s.bol_number,
-                "status": s.status,
-            }
-            for s in shipments
-        ],
-    }
+    from fastapi import HTTPException
+    raise HTTPException(status_code=403, detail="Seeding disabled in production.")
 
 
 @router.post("/emails/inject")
 def inject_custom_email(payload: InjectEmailRequest):
     """Add a custom email to the test inbox."""
-    new_email = {
-        "id": f"custom-{uuid.uuid4().hex[:8]}",
-        "scenario": payload.scenario_label or "Custom Test Email",
-        "subject": payload.subject,
-        "sender": payload.sender,
-        "body_text": payload.body_text,
-        "expected_action": "Custom agent evaluation",
-    }
-    _INJECTED_EMAILS.insert(0, new_email)
-    return {"status": "injected", "email": new_email}
+    from fastapi import HTTPException
+    raise HTTPException(status_code=403, detail="Email injection disabled in production.")
 
 
 @router.post("/process")
@@ -558,15 +528,10 @@ async def simulate_multi_source_reconstruction(
     db: Session = Depends(get_db),
 ):
     """Phase 2 Exit Criteria Demo: Progressive multi-source shipment reconstruction and conflict guardrails.
-
-    Demonstrates:
-    1. Initial Rate Confirmation ($1,650 agreed rate, Chicago -> Atlanta)
-    2. Driver Pickup Notification email (sets status to 'in_transit', confirms actual pickup)
-    3. BOL Document ingestion (enriches weight: 16,450 lbs, pallets: 12 without overwriting pricing)
-    4. Reweigh Scale Ticket (highest authority 100 updates verified weight to 16,520 lbs)
-    5. Conflicting Invoice ($1,850 billed amount vs $1,650 agreed) -> Triggers Critical Conflict & halts write
-    6. POD Signed Delivery Receipt (marks delivered with consignee signature)
     """
+    from fastapi import HTTPException
+    raise HTTPException(status_code=403, detail="Simulation disabled in production.")
+
     from apps.agent.inbox.service import run_inbox_agent
     from packages.domain.canonical import (
         CanonicalShipment,

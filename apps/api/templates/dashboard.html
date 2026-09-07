@@ -816,9 +816,7 @@ async function addCarrierContact() {
       <span id="db-status-pill" class="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
         Supabase: Connecting...
       </span>
-      <button onclick="seedDatabase()" id="btn-seed" class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
-        🔄 Reset / Seed Test Data
-      </button>
+
       <a href="/docs" target="_blank" class="px-3 py-1 rounded bg-indigo-950 hover:bg-indigo-900 text-indigo-300 border border-indigo-800 transition">
         Swagger Docs ↗
       </a>
@@ -830,22 +828,7 @@ async function addCarrierContact() {
     <button onclick="switchMainTab('inbox')" id="main-tab-inbox" class="py-3 tab-active flex items-center space-x-1.5">
       <span>📬</span><span>1. Inbox Agent & Execution</span>
     </button>
-    <button onclick="switchMainTab('canonical')" id="main-tab-canonical" class="py-3 tab-inactive flex items-center space-x-1.5">
-      <span>🏛️</span><span>2. Canonical Model & Provenance</span>
-    </button>
-    <button onclick="switchMainTab('conflicts')" id="main-tab-conflicts" class="py-3 tab-inactive flex items-center space-x-1.5">
-      <span>⚠️</span><span>3. Conflict Guardrail Console</span>
-      <span id="conflicts-count-badge" class="ml-1 px-1.5 py-0.2 rounded-full bg-red-950 text-red-400 border border-red-800 text-[10px] hidden">0</span>
-    </button>
-    <button onclick="switchMainTab('documents')" id="main-tab-documents" class="py-3 tab-inactive flex items-center space-x-1.5">
-      <span>📄</span><span>4. Document Classifier & Parser</span>
-    </button>
-    <button onclick="switchMainTab('retrieval')" id="main-tab-retrieval" class="py-3 tab-inactive flex items-center space-x-1.5">
-      <span>🔍</span><span>5. Context & Vector Search</span>
-    </button>
-    <button onclick="switchMainTab('simulation')" id="main-tab-simulation" class="py-3 tab-inactive flex items-center space-x-1.5 text-amber-400">
-      <span>🚀</span><span>6. Multi-Source Simulator (Exit Criteria)</span>
-    </button>
+
     <button onclick="switchMainTab('audit')" id="main-tab-audit" class="py-3 tab-inactive flex items-center space-x-1.5 text-emerald-400 font-semibold">
       <span>💰</span><span>7. Billing Audit Engine (Phase 3)</span>
     </button>
@@ -885,47 +868,6 @@ async function addCarrierContact() {
           </div>
         </div>
 
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-sm font-semibold text-white flex items-center">
-              <span class="text-base mr-2">📬</span> Inbound Test Mailbox
-            </h2>
-            <span id="mail-count" class="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">Loading...</span>
-          </div>
-          <p class="text-xs text-slate-400 mb-3">Select a scenario to test extraction, truth verification, and tool guardrails:</p>
-          
-          <!-- Scenario List -->
-          <div id="email-scenarios" class="space-y-2 max-h-56 overflow-y-auto pr-1"></div>
-        </div>
-
-        <!-- Active Email Inspector / Composer -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex-1 flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Email Message Payload</h3>
-            <button onclick="toggleComposer()" class="text-xs text-emerald-400 hover:text-emerald-300">
-              + Compose Custom
-            </button>
-          </div>
-
-          <div class="space-y-2 text-xs flex-1 flex flex-col">
-            <div>
-              <label class="text-slate-500 block mb-0.5">Sender</label>
-              <input id="input-sender" type="text" class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200 focus:border-emerald-500 focus:outline-none" />
-            </div>
-            <div>
-              <label class="text-slate-500 block mb-0.5">Subject</label>
-              <input id="input-subject" type="text" class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium" />
-            </div>
-            <div class="flex-1 flex flex-col">
-              <label class="text-slate-500 block mb-0.5">Body</label>
-              <textarea id="input-body" rows="5" class="w-full flex-1 bg-slate-950 border border-slate-800 rounded p-2 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono text-xs"></textarea>
-            </div>
-          </div>
-
-          <button id="btn-process" onclick="processActiveEmail()" class="mt-4 w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm flex items-center justify-center space-x-2 transition shadow-lg shadow-emerald-950">
-            <span>⚡ Run Upgraded Inbox Agent (Phase 2.6)</span>
-          </button>
-        </div>
       </div>
 
       <!-- Right Column: Live Agent Execution & Trace (7 cols) -->
@@ -1014,191 +956,7 @@ async function addCarrierContact() {
       </div>
     </div>
 
-    <!-- TAB 2: CANONICAL MODEL & PROVENANCE INSPECTOR (Phase 2.1) -->
-    <div id="section-canonical" class="hidden flex flex-col space-y-4">
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-          <div>
-            <h2 class="text-sm font-semibold text-white flex items-center">
-              <span class="text-base mr-2">🏛️</span> Canonical Shipment Model & Field-Level Provenance Ledger
-            </h2>
-            <p class="text-xs text-slate-400 mt-0.5">Every field retains its authoritative source, confidence score, authority ranking, and audit timestamp. Zero silent data overwrites.</p>
-          </div>
-          <div class="flex items-center space-x-2">
-            <label class="text-xs text-slate-400">Select Shipment:</label>
-            <select id="canonical-shipment-select" onchange="loadCanonicalShipment()" class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200">
-              <option value="">Loading shipments...</option>
-            </select>
-            <button onclick="loadCanonicalShipment()" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200">↻ Reload</button>
-          </div>
-        </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <!-- Structured Canonical Entities -->
-          <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-3 flex items-center">
-              <span class="mr-1.5">📦</span> Reconciled Canonical Entities
-            </h3>
-            <div id="canonical-entities-view" class="text-xs space-y-3 font-mono">
-              <div class="text-slate-500 italic">Select a shipment to inspect canonical state...</div>
-            </div>
-          </div>
-
-          <!-- Provenance Ledger -->
-          <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-indigo-400 mb-3 flex items-center">
-              <span class="mr-1.5">📜</span> Active Field Provenance Ledger
-            </h3>
-            <div id="canonical-provenance-view" class="text-xs space-y-2 font-mono max-h-96 overflow-y-auto pr-1">
-              <div class="text-slate-500 italic">Select a shipment to inspect field provenance trail...</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB 3: CONFLICT GUARDRAIL CONSOLE (Phase 2.4) -->
-    <div id="section-conflicts" class="hidden flex flex-col space-y-4">
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-          <div>
-            <h2 class="text-sm font-semibold text-white flex items-center">
-              <span class="text-base mr-2">⚠️</span> Detected Discrepancies & Truth Conflicts
-            </h2>
-            <p class="text-xs text-slate-400 mt-0.5">Surfaces pricing mismatches, certified reweigh discrepancies, and illegal status jumps without silent data loss.</p>
-          </div>
-          <button onclick="loadConflicts()" class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200">↻ Refresh Conflicts</button>
-        </div>
-
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
-            <thead>
-              <tr class="border-b border-slate-800 text-slate-400">
-                <th class="py-2.5 px-3">Severity</th>
-                <th class="py-2.5 px-3">Field</th>
-                <th class="py-2.5 px-3">Type</th>
-                <th class="py-2.5 px-3">Source A (Current Truth)</th>
-                <th class="py-2.5 px-3">Source B (Proposed Assertion)</th>
-                <th class="py-2.5 px-3">Explanation</th>
-                <th class="py-2.5 px-3">Recommended Workflow</th>
-                <th class="py-2.5 px-3">Status</th>
-                <th class="py-2.5 px-3">Action</th>
-              </tr>
-            </thead>
-            <tbody id="conflicts-tbody" class="divide-y divide-slate-800 text-slate-300">
-              <tr><td colspan="9" class="text-center py-6 text-slate-500">Loading detected conflicts...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB 4: DOCUMENT CLASSIFIER & PARSER (Phase 2.2) -->
-    <div id="section-documents" class="hidden flex flex-col space-y-4">
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
-        <div class="flex items-center justify-between mb-3">
-          <div>
-            <h2 class="text-sm font-semibold text-white flex items-center">
-              <span class="text-base mr-2">📄</span> Freight Document Processing Playground
-            </h2>
-            <p class="text-xs text-slate-400 mt-0.5">Test classification, layout/text parsing, field normalization, and provenance assertion generation.</p>
-          </div>
-          <!-- Sample Loaders -->
-          <div class="flex items-center space-x-2">
-            <span class="text-xs text-slate-500">Load sample:</span>
-            <button onclick="loadSampleDoc('bol')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">BOL</button>
-            <button onclick="loadSampleDoc('rate_con')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">Rate Con</button>
-            <button onclick="loadSampleDoc('invoice')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">Invoice</button>
-            <button onclick="loadSampleDoc('scale_ticket')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">Scale Ticket</button>
-            <button onclick="loadSampleDoc('pod')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">POD</button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <!-- Document Input -->
-          <div class="space-y-3">
-            <div>
-              <label class="text-xs text-slate-400 block mb-1">Simulated Filename</label>
-              <input id="doc-filename" type="text" value="BOL-9842-Dallas.pdf" class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200" />
-            </div>
-            <div>
-              <label class="text-xs text-slate-400 block mb-1">Document Content / Extracted Raw Text</label>
-              <textarea id="doc-content" rows="14" class="w-full bg-slate-950 border border-slate-800 rounded p-2.5 text-xs font-mono text-slate-200 focus:border-emerald-500 focus:outline-none"></textarea>
-            </div>
-            <button onclick="parseDocumentPlayground()" id="btn-parse-doc" class="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition">
-              ⚡ Classify, Normalize & Generate Provenance
-            </button>
-          </div>
-
-          <!-- Document Output -->
-          <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 flex flex-col">
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Pipeline Results</h3>
-            <div id="doc-results-container" class="flex-1 text-xs space-y-3 font-mono overflow-y-auto">
-              <div class="text-slate-500 italic py-12 text-center">Click "Classify, Normalize & Generate Provenance" to view parsing breakdown.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB 5: CONTEXT & VECTOR RETRIEVAL (Phase 2.5) -->
-    <div id="section-retrieval" class="hidden flex flex-col space-y-4">
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
-        <div class="flex items-center justify-between mb-3">
-          <div>
-            <h2 class="text-sm font-semibold text-white flex items-center">
-              <span class="text-base mr-2">🔍</span> Multi-Tenant Context & Semantic Retrieval Engine
-            </h2>
-            <p class="text-xs text-slate-400 mt-0.5">Search across shipments, documents, and messages with strict organization isolation and relevance ranking.</p>
-          </div>
-        </div>
-
-        <div class="flex items-center space-x-3 mb-4">
-          <input id="retrieval-query" type="text" placeholder="Search by Load ID, carrier, commodity, detention, or damaged freight..." class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none" />
-          <button onclick="executeRetrievalSearch()" id="btn-search-retrieval" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition">
-            Search
-          </button>
-        </div>
-
-        <!-- Quick Query Tags -->
-        <div class="flex items-center space-x-2 text-xs text-slate-400 mb-4">
-          <span>Quick queries:</span>
-          <button onclick="setSearchQuery('Estes Express')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">Estes Express</button>
-          <button onclick="setSearchQuery('Load 5821')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">Load 5821</button>
-          <button onclick="setSearchQuery('Chicago to Atlanta')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">Chicago to Atlanta</button>
-          <button onclick="setSearchQuery('Rate Confirmation agreed')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">Rate Confirmation agreed</button>
-        </div>
-
-        <div id="retrieval-results" class="space-y-2.5">
-          <div class="text-xs text-slate-500 py-8 text-center border border-dashed border-slate-800 rounded-lg">Enter a search query to test unified relational and semantic retrieval.</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB 6: MULTI-SOURCE PROGRESSIVE RECONSTRUCTION (Exit Criteria Demo) -->
-    <div id="section-simulation" class="hidden flex flex-col space-y-4">
-      <div class="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-900/50 rounded-xl p-5 shadow-sm">
-        <div class="flex items-center justify-between mb-3">
-          <div>
-            <h2 class="text-base font-semibold text-white flex items-center">
-              <span class="text-xl mr-2">🚀</span> Progressive Multi-Source Reconstruction & Conflict Guardrails
-            </h2>
-            <p class="text-xs text-slate-400 mt-1 max-w-3xl">
-              Demonstrates <strong>Phase 2 Exit Criteria</strong> in one click: reconstructs canonical shipment state progressively from Rate Con &rarr; Driver Email &rarr; BOL &rarr; Certified Reweigh Scale Ticket &rarr; Conflicting Invoice &rarr; POD without silent data overwrites.
-            </p>
-          </div>
-          <button onclick="runMultiSourceSimulation()" id="btn-run-simulation" class="px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-amber-950 flex items-center space-x-1.5">
-            <span>⚡ Run 1-Click Simulation</span>
-          </button>
-        </div>
-
-        <div id="simulation-stepper" class="mt-5 space-y-3">
-          <div class="text-xs text-slate-500 py-12 text-center border border-dashed border-slate-800 rounded-lg">
-            Click <strong class="text-amber-400">"Run 1-Click Simulation"</strong> to witness the autonomous multi-source reconstruction sequence in real time.
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- TAB 7: BILLING AUDIT ENGINE (Phase 3.1 - 3.3) -->
     <div id="section-audit" class="hidden flex flex-col space-y-6">
