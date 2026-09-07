@@ -118,8 +118,18 @@ class Settings(BaseSettings):
             pwd = urllib.parse.quote_plus(urllib.parse.unquote_plus(self.DB_PASSWORD))
             url = f"postgresql://{self.DB_USER}:{pwd}@{self.DB_HOST}:{port}/{self.DB_NAME}"
             
+        # Vercel Serverless doesn't support IPv6 outbound.
+        # If the user provided the direct IPv6 Supabase URL, auto-upgrade it to the IPv4 pooler.
+        if url and "db.jtbjhoikomcvnenfucjt.supabase.co" in url:
+            url = url.replace("db.jtbjhoikomcvnenfucjt.supabase.co:5432", "aws-0-ap-south-1.pooler.supabase.com:6543")
+            url = url.replace("db.jtbjhoikomcvnenfucjt.supabase.co", "aws-0-ap-south-1.pooler.supabase.com")
+            if "postgres:" in url and "postgres.jtbjhoikomcvnenfucjt" not in url:
+                url = url.replace("postgres:", "postgres.jtbjhoikomcvnenfucjt:", 1)
+            
         if url and "aws-0-region.pooler.supabase.com" in url:
-            url = url.replace("aws-0-region.pooler.supabase.com", "db.jtbjhoikomcvnenfucjt.supabase.co")
+            url = url.replace("aws-0-region.pooler.supabase.com", "aws-0-ap-south-1.pooler.supabase.com")
+            if "postgres:" in url and "postgres.jtbjhoikomcvnenfucjt" not in url:
+                url = url.replace("postgres:", "postgres.jtbjhoikomcvnenfucjt:", 1)
 
         if url:
             if url.startswith("postgres://"):
