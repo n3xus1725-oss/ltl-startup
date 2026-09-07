@@ -4,6 +4,7 @@ Executes the 110-email benchmark through the Inbox Action Agent pipeline
 and verifies compliance with Phase 1 Exit Criteria.
 """
 
+import os
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
