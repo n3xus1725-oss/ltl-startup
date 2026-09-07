@@ -84,11 +84,23 @@ app.add_middleware(
 
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "SAMEORIGIN"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    return response
+    try:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+    except Exception as exc:
+        import traceback
+        logger.error(f"Unhandled exception: {exc}\n{traceback.format_exc()}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": str(exc),
+                "type": type(exc).__name__,
+                "traceback": traceback.format_exc().splitlines()
+            }
+        )
 
 
 @app.middleware("http")
@@ -127,6 +139,20 @@ app.include_router(contracts_router, prefix=settings.API_V1_PREFIX)
 app.include_router(invoices_router, prefix=settings.API_V1_PREFIX)
 app.include_router(carrier_contacts_router, prefix=settings.API_V1_PREFIX)
 app.include_router(disputes_router, prefix=settings.API_V1_PREFIX)
+app.include_router(connectors_router, prefix=settings.API_V1_PREFIX)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    logger.error(f"Unhandled exception: {exc}\n{traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": str(exc),
+            "type": type(exc).__name__,
+            "traceback": traceback.format_exc().splitlines()
+        }
+    )
 
 
 @app.get("/", tags=["Root"])
