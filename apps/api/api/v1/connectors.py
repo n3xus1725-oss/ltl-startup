@@ -31,10 +31,13 @@ class SyncGmailRequest(BaseModel):
 
 def _get_org(db: Session, org_id_str: Optional[str] = None) -> Organization:
     """Retrieve requested organization or default demo organization."""
-    if org_id_str:
-        org = db.query(Organization).filter(Organization.id == uuid.UUID(org_id_str)).first()
-        if org:
-            return org
+    if org_id_str and org_id_str not in ("null", "undefined"):
+        try:
+            org = db.query(Organization).filter(Organization.id == uuid.UUID(org_id_str)).first()
+            if org:
+                return org
+        except ValueError:
+            pass
     org = db.query(Organization).filter(Organization.slug == "nexus-freight-demo").first()
     if not org:
         org = Organization(name="Nexus Freight Logistics", slug="nexus-freight-demo", is_active=True)
