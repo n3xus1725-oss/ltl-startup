@@ -123,12 +123,16 @@ class Settings(BaseSettings):
         if url and "db.jtbjhoikomcvnenfucjt.supabase.co" in url:
             url = url.replace("db.jtbjhoikomcvnenfucjt.supabase.co:5432", "aws-0-ap-south-1.pooler.supabase.com:6543")
             url = url.replace("db.jtbjhoikomcvnenfucjt.supabase.co", "aws-0-ap-south-1.pooler.supabase.com")
-            if "postgres:" in url and "postgres.jtbjhoikomcvnenfucjt" not in url:
+            if "postgres.xxx:" in url:
+                url = url.replace("postgres.xxx:", "postgres.jtbjhoikomcvnenfucjt:", 1)
+            elif "postgres:" in url and "postgres.jtbjhoikomcvnenfucjt" not in url:
                 url = url.replace("postgres:", "postgres.jtbjhoikomcvnenfucjt:", 1)
             
         if url and "aws-0-region.pooler.supabase.com" in url:
             url = url.replace("aws-0-region.pooler.supabase.com", "aws-0-ap-south-1.pooler.supabase.com")
-            if "postgres:" in url and "postgres.jtbjhoikomcvnenfucjt" not in url:
+            if "postgres.xxx:" in url:
+                url = url.replace("postgres.xxx:", "postgres.jtbjhoikomcvnenfucjt:", 1)
+            elif "postgres:" in url and "postgres.jtbjhoikomcvnenfucjt" not in url:
                 url = url.replace("postgres:", "postgres.jtbjhoikomcvnenfucjt:", 1)
 
         if url:
