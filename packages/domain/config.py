@@ -112,8 +112,14 @@ class Settings(BaseSettings):
         if self.DATABASE_URL and self.DATABASE_URL.strip():
             url = self.DATABASE_URL.strip()
         elif self.DB_HOST and self.DB_USER and self.DB_PASSWORD and self.DB_NAME:
+            import urllib.parse
             port = self.DB_PORT or 5432
-            url = f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{port}/{self.DB_NAME}"
+            # Handle if user didn't URL-encode the password in the env variable
+            pwd = urllib.parse.quote_plus(urllib.parse.unquote_plus(self.DB_PASSWORD))
+            url = f"postgresql://{self.DB_USER}:{pwd}@{self.DB_HOST}:{port}/{self.DB_NAME}"
+            
+        if url and "aws-0-region.pooler.supabase.com" in url:
+            url = url.replace("aws-0-region.pooler.supabase.com", "db.jtbjhoikomcvnenfucjt.supabase.co")
 
         if url:
             if url.startswith("postgres://"):
