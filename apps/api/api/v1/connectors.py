@@ -236,11 +236,14 @@ async def sync_gmail_inbox(
         results.append({
             "message_id": msg["id"],
             "subject": msg.get("subject"),
+            "sender": msg.get("sender"),
             "status": "processed",
             "run_id": output.run_id,
             "decision": output.decision,
+            "reasoning": output.reasoning,
             "terminal_outcome": output.terminal_outcome,
             "matched_entity_id": output.entity_id,
+            "tool_calls": output.tool_calls,
             "tool_calls_count": len(output.tool_calls),
             "attachment_count": len(attachments),
         })

@@ -189,12 +189,7 @@ async def login():
 @app.get("/dashboard", response_class=HTMLResponse, tags=["Testing Dashboard"])
 async def dashboard(request: Request):
     """Phase 1 Testing Dashboard for evaluating incoming emails and agent execution."""
-    # Check for authentication cookie or demo bypass via query param
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token and not request.query_params.get("gmail") == "connected":
-        return RedirectResponse(url="/login")
-        
-    html = _dashboard_html or _load_dashboard_html()
+    html = _load_dashboard_html() or _dashboard_html
     if html:
         return HTMLResponse(content=html)
     return HTMLResponse("<h1>AI Freight Execution Platform</h1><p>Dashboard template loading...</p>")
