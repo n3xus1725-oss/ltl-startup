@@ -160,8 +160,9 @@ async def root(request: Request):
     """Root endpoint welcoming users, providing API documentation links or rendering the Testing Dashboard."""
     accept = request.headers.get("accept", "")
     html = _dashboard_html or _load_dashboard_html()
-    if "text/html" in accept and html:
-        return HTMLResponse(content=html)
+    if "text/html" in accept:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/login")
     return {
         "platform": "AI Freight Information & Execution Platform",
         "status": "operational",
