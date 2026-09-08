@@ -49,10 +49,15 @@ class LLMGateway:
         # If explicit mock_mode not passed, auto-enable mock if no API key is present
         has_api_key = bool(
             os.environ.get("OPENAI_API_KEY")
-            or os.environ.get("LITELLM_API_KEY")
+            or os.environ.get("GEMINI_API_KEY")
             or settings.OPENAI_API_KEY
-            or settings.LITELLM_API_KEY
+            or settings.GEMINI_API_KEY
         )
+        
+        # Inject to environment for litellm if configured in settings but missing in env
+        if settings.GEMINI_API_KEY and not os.environ.get("GEMINI_API_KEY"):
+            os.environ["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
+            
         self.mock_mode = mock_mode if mock_mode is not None else (not has_api_key)
 
     async def complete(

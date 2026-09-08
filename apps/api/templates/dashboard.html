@@ -654,8 +654,8 @@ async function addCarrierContact() {
         <!-- Top Bar: Action & Connection Status -->
         <div class="flex flex-col sm:flex-row items-center justify-between bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl p-5 shadow-sm shrink-0">
           <div class="flex items-center space-x-4 mb-4 sm:mb-0">
-            <div class="flex items-center justify-center w-10 h-10 rounded-full bg-[#121212] border border-[#262626]">
-              <span class="text-xl">??</span>
+            <div class="flex items-center justify-center w-10 h-10 rounded-full bg-[#121212] border border-[#262626] text-white">
+              <svg class="w-5 h-5 text-neutral-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
             </div>
             <div>
               <h2 class="text-base font-semibold text-white">Inbox Agent Overview</h2>
@@ -665,7 +665,7 @@ async function addCarrierContact() {
           <div class="flex items-center space-x-4">
              <div id="last-synced-time" class="text-xs text-neutral-500 hidden sm:block">Last Synced: Just now</div>
              <button onclick="syncLiveGmail()" id="btn-sync-gmail" class="px-5 py-2.5 rounded-lg bg-white hover:bg-neutral-200 text-black text-sm font-semibold transition flex items-center justify-center shadow-lg shadow-white/10">
-               <span class="mr-2">?</span> Sync Live Inbox
+               <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Sync Live Inbox
              </button>
           </div>
         </div>
@@ -676,10 +676,10 @@ async function addCarrierContact() {
           <div class="flex-[2] flex flex-col bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl shadow-sm overflow-hidden min-h-[500px]">
             <div class="border-b border-[#1e1e1e] bg-[#050505] px-5 py-4 flex items-center justify-between shrink-0">
                <h2 class="text-sm font-semibold text-white flex items-center">
-                  <span class="mr-2">???</span> Supabase Live Shipments Database
+                  <svg class="w-4 h-4 mr-2 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3V7c0-2-1.5-3-3.5-3h-9C5.5 4 4 5 4 7zm0 5h16M4 12c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3"/></svg> Supabase Live Shipments Database
                </h2>
                <button onclick="refreshTables()" class="px-3 py-1.5 rounded-md bg-[#121212] hover:bg-[#1a1a1a] border border-[#262626] text-neutral-300 transition flex items-center text-xs font-medium">
-                 <span class="mr-1">?</span> Refresh Data
+                 <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Refresh Data
                </button>
             </div>
             <div class="flex-1 overflow-auto bg-black p-0 relative">
@@ -709,14 +709,16 @@ async function addCarrierContact() {
           <div class="flex-1 flex flex-col bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl shadow-sm overflow-hidden min-h-[500px] min-w-[320px]">
             <div class="border-b border-[#1e1e1e] bg-[#050505] px-5 py-4 flex items-center justify-between shrink-0">
                <h2 class="text-sm font-semibold text-white flex items-center">
-                  <span class="mr-2">??</span> AI Agent Activity
+                  <svg class="w-4 h-4 mr-2 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg> AI Agent Activity
                </h2>
                <span id="trace-status" class="text-[10px] px-2.5 py-1 rounded-full bg-[#121212] text-neutral-400 border border-[#262626]">Awaiting Sync</span>
             </div>
             <div id="trace-container" class="flex-1 overflow-y-auto p-4 bg-black relative">
                <div id="sync-summary-result" class="w-full">
                  <div class="h-full min-h-[300px] flex flex-col items-center justify-center text-center p-8 border border-dashed border-[#1e1e1e] rounded-lg mt-4">
-                   <div class="w-12 h-12 rounded-full bg-[#121212] flex items-center justify-center text-2xl mb-3 border border-[#262626]">??</div>
+                   <div class="w-12 h-12 rounded-full bg-[#121212] flex items-center justify-center text-neutral-400 mb-3 border border-[#262626]">
+                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                   </div>
                    <h3 class="text-sm font-medium text-neutral-300">Ready to Process</h3>
                    <p class="text-xs text-neutral-500 mt-2 max-w-[200px] mx-auto leading-relaxed">Click 'Sync Live Inbox' above to fetch and process new emails automatically.</p>
                  </div>
@@ -1567,21 +1569,25 @@ let globalEmails = [];
     async function syncLiveGmail() {
       const btn = document.getElementById('btn-sync-gmail');
       btn.disabled = true;
-      btn.innerHTML = '<span class="animate-spin mr-1">⟳</span> Syncing...';
+      btn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-black inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg> Syncing Inbox...';
       try {
         const res = await fetch('/api/v1/connectors/gmail/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: 'in:inbox', limit: 10 })
+          body: JSON.stringify({ query: 'in:inbox', limit: 20 })
         });
         const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || ("API returned HTTP " + res.status));
+        }
         renderSyncSummary(data);
-        await loadState();
+        await refreshTables();
       } catch (err) {
-        alert("Gmail sync error: " + err);
+        console.error("Gmail sync error:", err);
+        renderSyncError(err.message || String(err));
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<span class="mr-1">⚡</span> Sync Live Inbox';
+        btn.innerHTML = '<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Sync Live Inbox';
       }
     }
 
@@ -2622,12 +2628,14 @@ Received in good order and condition.`
     }
 
     function getStatusClass(status) {
-      switch (status) {
-        case 'in_transit': return 'bg-[#0e0e0e] text-neutral-200 border border-[#262626]';
-        case 'booked': return 'bg-[#0e0e0e] text-neutral-200 border border-[#262626]';
-        case 'delayed': return 'bg-[#0e0e0e] text-neutral-300 border border-[#262626]';
-        case 'delivered': return 'bg-[#0e0e0e] text-neutral-200 border border-[#262626]';
-        default: return 'bg-[#121212] text-neutral-300';
+      switch ((status || '').toLowerCase()) {
+        case 'picked_up': return 'bg-emerald-950/70 text-emerald-400 border border-emerald-700/60 font-semibold';
+        case 'in_transit': return 'bg-blue-950/70 text-blue-400 border border-blue-700/60 font-semibold';
+        case 'booked': return 'bg-purple-950/70 text-purple-400 border border-purple-700/60 font-semibold';
+        case 'delayed': return 'bg-amber-950/70 text-amber-400 border border-amber-700/60 font-semibold';
+        case 'delivered': return 'bg-teal-950/70 text-teal-400 border border-teal-700/60 font-semibold';
+        case 'created': return 'bg-neutral-900 text-neutral-300 border border-neutral-700 font-semibold';
+        default: return 'bg-[#121212] text-neutral-300 border border-[#262626] font-semibold';
       }
     }
 
@@ -2912,7 +2920,7 @@ async function loadRecoveryLedger() {
       const statusEl = document.getElementById('trace-status');
       
       statusEl.innerText = 'Sync Completed';
-      statusEl.className = 'text-xs px-2.5 py-0.5 rounded-full bg-[#121212] text-green-400 border border-[#262626]';
+      statusEl.className = 'text-[10px] px-2.5 py-1 rounded-full bg-[#0a1a0a] text-green-400 border border-green-900/50';
       
       // Hide standard single-email trace elements
       Array.from(container.children).forEach(child => {
@@ -2932,73 +2940,78 @@ async function loadRecoveryLedger() {
       summaryDiv.classList.remove('hidden');
       
       if (!data.executions || data.executions.length === 0) {
-        summaryDiv.innerHTML = `<div class="h-64 flex flex-col items-center justify-center text-center p-8 border border-dashed border-[#1e1e1e] rounded-lg">
-            <div class="w-12 h-12 rounded-full bg-[#121212] flex items-center justify-center text-2xl mb-3">??</div>
+        summaryDiv.innerHTML = `<div class="h-full min-h-[300px] flex flex-col items-center justify-center text-center p-8 border border-dashed border-[#1e1e1e] rounded-lg mt-4">
+            <div class="w-12 h-12 rounded-full bg-[#121212] flex items-center justify-center text-2xl mb-3 border border-[#262626]">??</div>
             <h3 class="text-sm font-medium text-neutral-300">Inbox Up to Date</h3>
-            <p class="text-xs text-neutral-500 max-w-sm mt-1">0 new messages found. All recent inbox messages have already been processed.</p>
+            <p class="text-xs text-neutral-500 max-w-[200px] mx-auto mt-2 leading-relaxed">0 new messages found. All recent inbox messages have already been processed.</p>
           </div>`;
         return;
       }
       
-      let html = `<div class="mb-4 bg-[#0a0a0a] border border-[#262626] p-3 rounded-lg flex items-center justify-between shadow-sm">
+      const getInitials = (sender) => {
+        if (!sender) return '?';
+        const parts = sender.split('<')[0].replace(/['"]/g, '').trim().split(' ');
+        if (parts.length > 1) return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+        return parts[0].substring(0, 2).toUpperCase();
+      };
+      
+      let html = `<div class="mb-5 bg-[#050505] border border-[#262626] p-4 rounded-xl flex items-center justify-between shadow-lg">
           <div>
-            <h3 class="text-white font-bold text-sm">Automated Agent Sync Complete</h3>
-            <p class="text-neutral-400 text-xs mt-0.5">${data.messages_processed} new email(s) processed headlessly</p>
+            <h3 class="text-white font-bold text-sm">Inbox Sync Complete</h3>
+            <p class="text-neutral-400 text-xs mt-1">${data.messages_processed} email(s) retrieved and analyzed</p>
           </div>
-          <div class="w-8 h-8 rounded-full bg-[#1a1a1a] flex items-center justify-center text-white font-bold border border-[#333]">${data.messages_processed}</div>
+          <div class="w-10 h-10 rounded-full bg-[#1a1a1a] flex items-center justify-center text-white font-bold border border-[#333] shadow-inner">${data.messages_processed}</div>
         </div>
-        <div class="space-y-3">`;
+        <div class="space-y-4">`;
       
       data.executions.forEach((exec) => {
         const isDup = exec.is_duplicate || exec.status === 'skipped_duplicate';
-        const badgeColor = isDup ? 'text-neutral-400 bg-[#121212]' : 'text-green-400 bg-[#0a1a0a] border border-green-900/50';
-        const badgeText = isDup ? 'Skipped (Duplicate)' : 'Processed';
-        const outcomeText = isDup ? 'Email was already processed in a previous sync.' : (exec.decision || exec.terminal_outcome || 'Agent executed successfully');
+        const badgeColor = isDup ? 'text-neutral-500 bg-[#121212]' : 'text-blue-400 bg-[#0a0f1a] border-blue-900/50';
+        const badgeText = isDup ? 'Already Processed' : 'AI Processed';
         
-        let toolsHtml = '';
-        if (exec.tool_calls && exec.tool_calls.length > 0) {
-          const toolNames = exec.tool_calls.map(tc => tc.tool_name || tc.name).filter(Boolean);
-          if (toolNames.length > 0) {
-            toolsHtml = `
-              <div class="mt-2 flex flex-wrap gap-1.5 items-center">
-                <span class="text-[10px] text-neutral-500">Actions:</span>
-                ${toolNames.map(t => `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#141414] text-neutral-300 border border-[#222222]">${t}</span>`).join('')}
-              </div>
-            `;
-          }
-        }
-
-        html += `<div class="bg-black border border-[#1e1e1e] rounded-lg p-3 relative overflow-hidden">
-            ${isDup ? '' : '<div class="absolute left-0 top-0 bottom-0 w-0.5 bg-green-500"></div>'}
-            <div class="flex items-start justify-between mb-2">
-              <div class="flex-1 pr-3">
-                <div class="flex items-center space-x-2 text-[10px] text-neutral-500 font-mono mb-1">
-                  <span>${exec.sender ? exec.sender.split('<').pop().replace('>', '') : 'inbox@carrier.com'}</span>
-                  <span>&bull;</span>
-                  <span>MSG: ${exec.message_id ? exec.message_id.substring(0, 10) : '-'}...</span>
+        let outcomeText = 'Agent reviewed the email successfully.';
+        if (isDup) outcomeText = 'This email was already processed in a previous sync. No changes made.';
+        else if (exec.terminal_outcome) outcomeText = exec.terminal_outcome;
+        else if (exec.reasoning) outcomeText = exec.reasoning;
+        
+        html += `<div class="bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl p-4 relative overflow-hidden hover:border-[#333] transition shadow-sm">
+            ${isDup ? '' : '<div class="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>'}
+            
+            <!-- Header: Sender & Subject -->
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex items-center space-x-3 max-w-[70%]">
+                <div class="w-9 h-9 shrink-0 rounded-full bg-[#1a1a1a] border border-[#333] flex items-center justify-center text-xs font-bold text-neutral-300">
+                   ${getInitials(exec.sender)}
                 </div>
-                <h4 class="text-sm font-medium text-white line-clamp-1">${exec.subject || 'No Subject'}</h4>
+                <div class="overflow-hidden">
+                  <h4 class="text-sm font-semibold text-white truncate" title="${exec.sender || 'Unknown Sender'}">${exec.sender || 'Unknown Sender'}</h4>
+                  <p class="text-xs text-neutral-400 font-medium truncate mt-0.5" title="${exec.subject || 'No Subject'}">${exec.subject || 'No Subject'}</p>
+                </div>
               </div>
-              <span class="text-[10px] px-2 py-0.5 rounded font-mono uppercase tracking-wider whitespace-nowrap ${badgeColor}">${badgeText}</span>
+              <span class="text-[10px] px-2.5 py-1 rounded-md border border-[#262626] font-semibold whitespace-nowrap ${badgeColor} shrink-0">
+                ${badgeText}
+              </span>
             </div>
             
-            <div class="mt-2 pt-2 border-t border-[#1a1a1a] space-y-1.5">
-              <div class="text-xs text-neutral-300 flex items-start">
-                <span class="mr-1.5 mt-0.5 text-neutral-500">&bull;</span>
-                <span>${outcomeText}</span>
+            <!-- Email Body Preview -->
+            <div class="bg-black/60 rounded-lg p-3 border border-[#161616] mb-4 relative group">
+              <div class="absolute top-2 left-2 text-[10px] font-bold text-neutral-600 uppercase tracking-wider">Email Content</div>
+              <p class="text-xs text-neutral-400 line-clamp-3 leading-relaxed mt-4">"${exec.body_preview || 'No text content extracted...'}"</p>
+            </div>
+
+            <!-- AI Action Section -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between bg-[#050505] p-3 rounded-lg border border-[#1a1a1a]">
+              <div class="flex items-start space-x-3 mb-2 sm:mb-0">
+                <div class="text-base mt-0.5 opacity-80 ${isDup ? 'grayscale' : ''}">??</div>
+                <div>
+                  <div class="text-[11px] font-bold text-neutral-500 uppercase tracking-wider mb-0.5">AI Engine Decision</div>
+                  <div class="text-xs font-medium ${isDup ? 'text-neutral-400' : 'text-blue-300 line-clamp-2'} leading-relaxed">${outcomeText}</div>
+                </div>
               </div>
-              ${exec.reasoning && !isDup ? `
-                <div class="text-[11px] text-neutral-400 pl-3 italic border-l border-[#262626]">
-                  ${exec.reasoning}
-                </div>
-              ` : ''}
-              ${exec.matched_entity_id ? `
-                <div class="mt-2 bg-[#0a0a0a] rounded px-2 py-1.5 border border-[#1e1e1e] flex items-center justify-between">
-                  <span class="text-[10px] text-neutral-500 font-mono">Linked Shipment ID:</span>
-                  <span class="text-[10px] text-emerald-400 font-mono">${exec.matched_entity_id}</span>
-                </div>
-              ` : ''}
-              ${toolsHtml}
+              ${exec.matched_entity_id ? `<div class="bg-black px-3 py-1.5 rounded-md border border-[#222] shrink-0 mt-2 sm:mt-0 ml-0 sm:ml-4">
+                 <div class="text-[9px] text-neutral-500 uppercase tracking-wider mb-0.5">Matched Load ID</div>
+                 <div class="text-xs text-white font-mono font-medium">${exec.matched_entity_id}</div>
+              </div>` : ''}
             </div>
           </div>`;
       });

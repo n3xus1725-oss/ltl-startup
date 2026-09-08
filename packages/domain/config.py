@@ -46,8 +46,9 @@ class Settings(BaseSettings):
     # LLM Settings
     OPENAI_API_KEY: Optional[str] = Field(default=None)
     LITELLM_API_KEY: Optional[str] = Field(default=None)
-    DEFAULT_MODEL: str = Field(default="gpt-4o-mini")
-    REASONING_MODEL: str = Field(default="gpt-4o")
+    GEMINI_API_KEY: Optional[str] = Field(default=None)
+    DEFAULT_MODEL: str = Field(default="gemini/gemini-1.5-flash")
+    REASONING_MODEL: str = Field(default="gemini/gemini-1.5-pro")
 
     # Connector / Mailbox Settings
     GMAIL_CLIENT_ID: Optional[str] = Field(default=None)
@@ -88,6 +89,7 @@ class Settings(BaseSettings):
         "SUPABASE_SERVICE_ROLE_KEY",
         "OPENAI_API_KEY",
         "LITELLM_API_KEY",
+        "GEMINI_API_KEY",
         "GMAIL_CLIENT_ID",
         "GMAIL_CLIENT_SECRET",
         "GMAIL_REFRESH_TOKEN",
