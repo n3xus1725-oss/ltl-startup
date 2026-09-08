@@ -15,7 +15,7 @@ from packages.domain.config import get_settings
 from packages.domain.dispatcher import EventDispatcher
 from packages.domain.events import InboundEventPayload
 from packages.domain.logging import logger
-from packages.domain.models import Organization
+from packages.domain.models import Organization, Shipment
 from packages.storage.credentials_crypto import encrypt_credentials
 from packages.storage.db import get_db
 from packages.storage.repositories.inbox_connections import InboxConnectionRepository
@@ -168,27 +168,66 @@ async def sync_gmail_inbox(
     org = _get_org(db, request.organization_id)
     conn_repo = InboxConnectionRepository(db)
 
-    active_conn = conn_repo.get_active_by_provider(org.id, "gmail")
-    if not active_conn and not request.mock_mode:
+    active_conns = [
+        c for c in conn_repo.list_by_org(org.id, provider="gmail")
+        if c.status == "active"
+    ]
+    # Prioritize the most recently connected / updated mailbox (e.g. krishnawararkar15@gmail.com)
+    active_conns.sort(
+        key=lambda c: c.updated_at or c.created_at or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+
+    if not active_conns and not request.mock_mode:
         raise HTTPException(
             status_code=400,
-            detail="No active Gmail connection found for organization",
+            detail="No active Gmail connection found for organization. Please connect Google first.",
         )
 
-    connector = GmailConnector(
-        organization_id=org.id,
-        db=db,
-        inbox_connection_id=active_conn.id if active_conn else None,
-        mock_mode=request.mock_mode,
-    )
-    messages = await connector.fetch_messages(query=request.query, limit=request.limit)
+    # Fetch messages from all active mailboxes (most recently active first)
+    messages: List[Dict[str, Any]] = []
+    active_conn = active_conns[0] if active_conns else None
+
+    # Try connections in priority order
+    for conn in (active_conns or [None]):
+        connector = GmailConnector(
+            organization_id=org.id,
+            db=db,
+            inbox_connection_id=conn.id if conn else None,
+            mock_mode=request.mock_mode,
+        )
+        try:
+            fetched = await connector.fetch_messages(query=request.query, limit=request.limit)
+            if fetched:
+                messages.extend(fetched)
+                # Keep active_conn as the one that had messages
+                active_conn = conn
+        except Exception as e:
+            logger.warning(f"Error fetching messages from connection {conn.email_address if conn else 'default'}: {e}")
+
+    # Remove duplicates if any across mailboxes
+    seen_ids = set()
+    unique_messages = []
+    for m in messages:
+        if m["id"] not in seen_ids:
+            seen_ids.add(m["id"])
+            unique_messages.append(m)
+    messages = unique_messages[:request.limit]
 
     dispatcher = EventDispatcher(db)
     agent_service = InboxAgentService(db=db)
     results: List[Dict[str, Any]] = []
 
     for msg in messages:
-        attachments = await connector.get_attachments(msg["id"])
+        attachments = []
+        if active_conn:
+            c_inst = GmailConnector(
+                organization_id=org.id,
+                db=db,
+                inbox_connection_id=active_conn.id,
+                mock_mode=request.mock_mode,
+            )
+            attachments = await c_inst.get_attachments(msg["id"])
 
         inbound = InboundEventPayload(
             organization_id=org.id,
@@ -211,6 +250,7 @@ async def sync_gmail_inbox(
             results.append({
                 "message_id": msg["id"],
                 "subject": msg.get("subject"),
+                "sender": msg.get("sender"),
                 "status": "skipped_duplicate",
                 "is_duplicate": True,
             })
@@ -227,30 +267,54 @@ async def sync_gmail_inbox(
         )
 
         output = await agent_service.run(agent_input)
-        
-        # 5. E2E Orchestration: if a shipment was matched/created, trigger the pipeline
+
+        # Retrieve rich shipment details if matched or auto-created
+        ship_details = None
         if output.entity_id:
             from apps.worker.pipeline import process_e2e_pipeline
             background_tasks.add_task(process_e2e_pipeline, str(org.id), output.entity_id)
+
+            try:
+                s_rec = db.query(Shipment).filter(Shipment.id == uuid.UUID(output.entity_id)).first()
+                if s_rec:
+                    ship_details = {
+                        "id": str(s_rec.id),
+                        "load_id": s_rec.load_id,
+                        "shipment_number": s_rec.shipment_number,
+                        "carrier_name": s_rec.carrier_name,
+                        "carrier_reference": s_rec.carrier_reference,
+                        "bol_number": s_rec.bol_number,
+                        "status": s_rec.status,
+                        "origin": s_rec.origin_address,
+                        "destination": s_rec.destination_address,
+                        "pickup_date": s_rec.pickup_date.isoformat() if s_rec.pickup_date else None,
+                        "eta": s_rec.eta.isoformat() if s_rec.eta else None,
+                        "weight_lbs": s_rec.weight_lbs,
+                        "pallet_count": s_rec.pallet_count,
+                    }
+            except Exception as e:
+                logger.warning(f"Error loading shipment details for output {output.entity_id}: {e}")
 
         results.append({
             "message_id": msg["id"],
             "subject": msg.get("subject"),
             "sender": msg.get("sender"),
+            "body_preview": (msg.get("body") or "")[:300],
             "status": "processed",
             "run_id": output.run_id,
             "decision": output.decision,
             "reasoning": output.reasoning,
             "terminal_outcome": output.terminal_outcome,
             "matched_entity_id": output.entity_id,
+            "shipment": ship_details,
             "tool_calls": output.tool_calls,
             "tool_calls_count": len(output.tool_calls),
             "attachment_count": len(attachments),
         })
 
-    # Update sync timestamp
-    if active_conn:
-        conn_repo.update_sync_status(org.id, active_conn.id)
+    # Update sync timestamp for all active connections
+    for c in active_conns:
+        conn_repo.update_sync_status(org.id, c.id)
 
     return {
         "status": "success",

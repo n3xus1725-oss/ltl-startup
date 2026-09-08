@@ -91,9 +91,16 @@ class GetShipmentTool(BaseTool):
 class UpdateShipmentInput(BaseModel):
     shipment_id: str = Field(..., description="Shipment UUID to update")
     status: Optional[str] = Field(default=None, description="New shipment operational status")
+    carrier_name: Optional[str] = Field(default=None, description="Carrier name")
+    carrier_reference: Optional[str] = Field(default=None, description="Carrier PRO number or tracking reference")
+    bol_number: Optional[str] = Field(default=None, description="Bill of Lading number")
+    origin_address: Optional[Dict[str, Any]] = Field(default=None, description="Origin address object")
+    destination_address: Optional[Dict[str, Any]] = Field(default=None, description="Destination address object")
     pickup_date: Optional[datetime] = Field(default=None, description="Actual or confirmed pickup timestamp")
     eta: Optional[datetime] = Field(default=None, description="Updated estimated time of arrival")
     delivery_date: Optional[datetime] = Field(default=None, description="Actual delivery timestamp")
+    weight_lbs: Optional[float] = Field(default=None, description="Weight in lbs")
+    pallet_count: Optional[int] = Field(default=None, description="Pallet count")
     metadata_payload: Optional[Dict[str, Any]] = Field(default=None, description="Additional custom metadata")
     reason: Optional[str] = Field(default=None, description="Operational explanation for update")
     idempotency_key: Optional[str] = Field(default=None, description="Unique key for update idempotency")
@@ -133,6 +140,31 @@ class UpdateShipmentTool(BaseTool):
             updates["status"] = input_data.status
             updated_fields.append("status")
 
+        if input_data.carrier_name is not None:
+            prior_values["carrier_name"] = existing.carrier_name
+            updates["carrier_name"] = input_data.carrier_name
+            updated_fields.append("carrier_name")
+
+        if input_data.carrier_reference is not None:
+            prior_values["carrier_reference"] = existing.carrier_reference
+            updates["carrier_reference"] = input_data.carrier_reference
+            updated_fields.append("carrier_reference")
+
+        if input_data.bol_number is not None:
+            prior_values["bol_number"] = existing.bol_number
+            updates["bol_number"] = input_data.bol_number
+            updated_fields.append("bol_number")
+
+        if input_data.origin_address is not None:
+            prior_values["origin_address"] = existing.origin_address
+            updates["origin_address"] = input_data.origin_address
+            updated_fields.append("origin_address")
+
+        if input_data.destination_address is not None:
+            prior_values["destination_address"] = existing.destination_address
+            updates["destination_address"] = input_data.destination_address
+            updated_fields.append("destination_address")
+
         if input_data.pickup_date is not None:
             prior_values["pickup_date"] = existing.pickup_date.isoformat() if existing.pickup_date else None
             updates["pickup_date"] = input_data.pickup_date
@@ -163,6 +195,16 @@ class UpdateShipmentTool(BaseTool):
             prior_values["delivery_date"] = existing.delivery_date.isoformat() if existing.delivery_date else None
             updates["delivery_date"] = input_data.delivery_date
             updated_fields.append("delivery_date")
+
+        if input_data.weight_lbs is not None:
+            prior_values["weight_lbs"] = existing.weight_lbs
+            updates["weight_lbs"] = input_data.weight_lbs
+            updated_fields.append("weight_lbs")
+
+        if input_data.pallet_count is not None:
+            prior_values["pallet_count"] = existing.pallet_count
+            updates["pallet_count"] = input_data.pallet_count
+            updated_fields.append("pallet_count")
 
         if input_data.metadata_payload is not None:
             current_meta = dict(updates.get("metadata_payload") or existing.metadata_payload or {})
@@ -505,10 +547,16 @@ class CreateShipmentInput(BaseModel):
     shipment_number: str = Field(..., description="Internal or assigned shipment identifier")
     load_id: Optional[str] = Field(default=None, description="Broker load ID or tender ID")
     carrier_name: Optional[str] = Field(default=None, description="Name of carrier")
+    carrier_reference: Optional[str] = Field(default=None, description="Carrier PRO number or reference")
+    bol_number: Optional[str] = Field(default=None, description="Bill of Lading number")
+    origin_address: Optional[Dict[str, Any]] = Field(default=None, description="Origin address {city, state}")
+    destination_address: Optional[Dict[str, Any]] = Field(default=None, description="Destination address {city, state}")
     status: str = Field(default="created", description="Initial status")
     pickup_date: Optional[datetime] = Field(default=None, description="Scheduled or confirmed pickup timestamp")
     delivery_date: Optional[datetime] = Field(default=None, description="Scheduled or confirmed delivery timestamp")
+    eta: Optional[datetime] = Field(default=None, description="Estimated time of arrival")
     weight_lbs: Optional[float] = Field(default=None, description="Total weight in pounds")
+    pallet_count: Optional[int] = Field(default=None, description="Pallet count")
     total_charges: Optional[float] = Field(default=None, description="Total expected charges")
     metadata_payload: Optional[Dict[str, Any]] = Field(default=None, description="Additional custom metadata")
 
@@ -547,10 +595,16 @@ class CreateShipmentTool(BaseTool):
             shipment_number=input_data.shipment_number,
             load_id=input_data.load_id,
             carrier_name=input_data.carrier_name,
+            carrier_reference=input_data.carrier_reference,
+            bol_number=input_data.bol_number,
+            origin_address=input_data.origin_address,
+            destination_address=input_data.destination_address,
             status=input_data.status,
             pickup_date=input_data.pickup_date,
             delivery_date=input_data.delivery_date,
+            eta=input_data.eta,
             weight_lbs=input_data.weight_lbs,
+            pallet_count=input_data.pallet_count,
             total_charges=input_data.total_charges,
             metadata_payload=input_data.metadata_payload,
         )

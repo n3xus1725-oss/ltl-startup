@@ -43,6 +43,118 @@ from packages.storage.repositories.tasks import TaskRepository
 from packages.tools.registry import ToolContext, ToolRegistry
 
 
+def extract_freight_details(text: str) -> Dict[str, Any]:
+    """Extract structured freight data from email text (load_id, carrier, PRO, BOL, origin, destination, ETA, etc.)."""
+    data: Dict[str, Any] = {}
+    if not text:
+        return data
+
+    # 1. Load ID
+    m_load = re.search(r"(?:Load|Shipment|Order|Ref)[\s#:]*([A-Za-z0-9-]+)", text, re.I)
+    if m_load:
+        data["load_id"] = m_load.group(1).strip()
+
+    # 2. Carrier Name
+    m_carrier = re.search(
+        r"(?:Carrier|Carrier Name|Trucking Co)[\s:]*([A-Za-z0-9\s.,&'-]+?)(?=\s+(?:PRO|BOL|ETA|Pickup|Delivery|Please|Thanks|$))",
+        text,
+        re.I,
+    )
+    if m_carrier:
+        c_val = m_carrier.group(1).strip().rstrip(".,")
+        if c_val and len(c_val) > 2:
+            data["carrier_name"] = c_val
+
+    if "carrier_name" not in data:
+        m_carrier_sign = re.search(
+            r"(?:Thanks|Regards|From|Sincerely)[,\s]+(?:[A-Za-z]+\s+)?([A-Za-z0-9\s&'-]+?\b(?:Freight|Logistics|Express|Lines|Transport|Trucking|Hauling|Carrier|LLC|Inc)\b)",
+            text,
+            re.I,
+        )
+        if m_carrier_sign:
+            data["carrier_name"] = m_carrier_sign.group(1).strip().rstrip(".,")
+
+    # 3. Carrier Reference / PRO #
+    m_pro = re.search(r"(?:PRO|PRO#|PRO\s*number|Tracking)[\s#:]*([A-Za-z0-9-]+)", text, re.I)
+    if m_pro:
+        data["carrier_reference"] = m_pro.group(1).strip()
+
+    # 4. BOL Number
+    m_bol = re.search(r"(?:BOL|BOL#|BOL\s*number|Bill of Lading)[\s#:]*([A-Za-z0-9-]+)", text, re.I)
+    if m_bol:
+        data["bol_number"] = m_bol.group(1).strip()
+
+    # 5. Origin Address / Pickup Location
+    m_orig = re.search(
+        r"(?:Pickup location|Origin|From|Shipper)[\s:]*([A-Za-z\s.-]+?,\s*[A-Z]{2})",
+        text,
+        re.I,
+    )
+    if m_orig:
+        parts = [x.strip() for x in m_orig.group(1).split(",")]
+        data["origin_address"] = {"city": parts[0], "state": parts[1] if len(parts) > 1 else ""}
+
+    # 6. Destination Address / Delivery Location
+    m_dest = re.search(
+        r"(?:Delivery location|Destination|To|Consignee)[\s:]*([A-Za-z\s.-]+?,\s*[A-Z]{2})",
+        text,
+        re.I,
+    )
+    if m_dest:
+        parts = [x.strip() for x in m_dest.group(1).split(",")]
+        data["destination_address"] = {"city": parts[0], "state": parts[1] if len(parts) > 1 else ""}
+
+    # 7. ETA (Estimated Time of Arrival)
+    m_eta = re.search(
+        r"(?:ETA|Estimated delivery|Estimated arrival|Delivery ETA)[\s:]*([A-Za-z0-9,:\s]+?)(?=\s+(?:Please|Thanks|Carrier|PRO|BOL|$))",
+        text,
+        re.I,
+    )
+    if m_eta:
+        clean_eta = m_eta.group(1).strip().replace(" at ", " ")
+        try:
+            from dateutil.parser import parse
+            data["eta"] = parse(clean_eta).isoformat()
+        except Exception:
+            data["eta"] = clean_eta
+
+    # 8. Pickup Date
+    m_pdate = re.search(
+        r"(?:picked up|pickup confirmed|loaded at)[\s:]*([A-Za-z0-9,:\s]+?)(?=\s+(?:Pickup location|Delivery|Carrier|PRO|BOL|ETA|Please|$))",
+        text,
+        re.I,
+    )
+    if m_pdate:
+        clean_p = m_pdate.group(1).strip().replace(" at ", " ")
+        if "today" in clean_p.lower():
+            data["pickup_date"] = datetime.now(timezone.utc).isoformat()
+        else:
+            try:
+                from dateutil.parser import parse
+                data["pickup_date"] = parse(clean_p).isoformat()
+            except Exception:
+                data["pickup_date"] = datetime.now(timezone.utc).isoformat()
+    elif "picked up" in text.lower():
+        data["pickup_date"] = datetime.now(timezone.utc).isoformat()
+
+    # 9. Weight & Pallets
+    m_wt = re.search(r"(\d+(?:,\d+)?(?:\.\d+)?)\s*(?:lbs|pounds|lb)\b", text, re.I)
+    if m_wt:
+        try:
+            data["weight_lbs"] = float(m_wt.group(1).replace(",", ""))
+        except Exception:
+            pass
+
+    m_plt = re.search(r"(\d+)\s*(?:pallets|plts|skids|pieces|pcs)\b", text, re.I)
+    if m_plt:
+        try:
+            data["pallet_count"] = int(m_plt.group(1))
+        except Exception:
+            pass
+
+    return data
+
+
 def build_inbox_agent_graph(
     db: Session,
     tool_registry: Optional[ToolRegistry] = None,
@@ -361,13 +473,16 @@ def build_inbox_agent_graph(
     # ---------------- Node 4: Classify Intent ---------------- #
     async def node_classify_intent(state: InboxAgentState) -> Dict[str, Any]:
         """Classify message intent into one of the supported workflows, or ambiguous/unknown."""
-        # If resolver already flagged ambiguity or unknown shipment reference, preserve it
-        if state.get("intent") in ("ambiguous", "unknown_shipment"):
+        raw_full_text = f"{state.get('subject') or ''} {state.get('body') or ''}"
+        extracted_freight: Dict[str, Any] = extract_freight_details(raw_full_text)
+
+        # If resolver already flagged ambiguity (multiple existing shipments match), preserve it
+        if state.get("intent") == "ambiguous":
             return {
-                "intent": state["intent"],
+                "intent": "ambiguous",
                 "intent_confidence": state.get("intent_confidence", 0.5),
                 "confidence": 0.5,
-                "extracted_data": {},
+                "extracted_data": extracted_freight,
             }
 
         subject = (state.get("subject") or "").lower()
@@ -418,7 +533,7 @@ def build_inbox_agent_graph(
             "happy holidays",
         ]
 
-        extracted_data: Dict[str, Any] = {}
+        extracted_data: Dict[str, Any] = dict(extracted_freight)
         classified_intent: Optional[str] = None
         confidence = 0.0
 
@@ -429,48 +544,48 @@ def build_inbox_agent_graph(
         elif any(kw in combined for kw in pickup_keywords):
             classified_intent = "pickup_confirmation"
             confidence = 0.95
-            raw_text = f"{state.get('subject') or ''} {state.get('body') or ''}"
-            iso_match = re.search(
-                r"\b(\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[-+]\d{2}:?\d{2})?)?)\b",
-                raw_text,
-            )
-            if iso_match:
-                try:
-                    dt = parse_date(iso_match.group(1))
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    extracted_data["pickup_date"] = dt.isoformat()
-                except Exception:
+            if not extracted_data.get("pickup_date"):
+                iso_match = re.search(
+                    r"\b(\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[-+]\d{2}:?\d{2})?)?)\b",
+                    raw_full_text,
+                )
+                if iso_match:
+                    try:
+                        dt = parse_date(iso_match.group(1))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        extracted_data["pickup_date"] = dt.isoformat()
+                    except Exception:
+                        extracted_data["pickup_date"] = datetime.now(timezone.utc).isoformat()
+                else:
                     extracted_data["pickup_date"] = datetime.now(timezone.utc).isoformat()
-            else:
-                extracted_data["pickup_date"] = datetime.now(timezone.utc).isoformat()
 
         elif any(kw in combined for kw in eta_keywords):
             classified_intent = "eta_update"
             confidence = 0.95
-            raw_text = f"{state.get('subject') or ''} {state.get('body') or ''}"
-            iso_match = re.search(
-                r"\b(\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[-+]\d{2}:?\d{2})?)?)\b",
-                raw_text,
-            )
-            if iso_match:
-                try:
-                    dt = parse_date(iso_match.group(1))
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    extracted_data["eta"] = dt.isoformat()
-                except Exception:
-                    extracted_data["eta"] = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-            else:
-                if "tomorrow" in combined:
-                    t_match = re.search(r"(\d{1,2}):(\d{2})", combined)
-                    hr = int(t_match.group(1)) if t_match else 18
-                    mn = int(t_match.group(2)) if t_match else 0
-                    now = datetime.now(timezone.utc)
-                    tomorrow = now + timedelta(days=1)
-                    extracted_data["eta"] = tomorrow.replace(hour=hr, minute=mn, second=0, microsecond=0).isoformat()
+            if not extracted_data.get("eta"):
+                iso_match = re.search(
+                    r"\b(\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[-+]\d{2}:?\d{2})?)?)\b",
+                    raw_full_text,
+                )
+                if iso_match:
+                    try:
+                        dt = parse_date(iso_match.group(1))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        extracted_data["eta"] = dt.isoformat()
+                    except Exception:
+                        extracted_data["eta"] = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
                 else:
-                    extracted_data["eta"] = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+                    if "tomorrow" in combined:
+                        t_match = re.search(r"(\d{1,2}):(\d{2})", combined)
+                        hr = int(t_match.group(1)) if t_match else 18
+                        mn = int(t_match.group(2)) if t_match else 0
+                        now = datetime.now(timezone.utc)
+                        tomorrow = now + timedelta(days=1)
+                        extracted_data["eta"] = tomorrow.replace(hour=hr, minute=mn, second=0, microsecond=0).isoformat()
+                    else:
+                        extracted_data["eta"] = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
 
         elif any(kw in combined for kw in missing_info_keywords):
             classified_intent = "missing_information"
@@ -505,6 +620,11 @@ def build_inbox_agent_graph(
                 classified_intent = "document_attached"
                 confidence = 0.95
 
+        # If resolver marked unknown_shipment and no specific operational keyword matched
+        if not classified_intent and state.get("intent") == "unknown_shipment":
+            classified_intent = "unknown_shipment"
+            confidence = 0.90
+
         # 2. Fallback to LLM for unstructured or ambiguous cases
         if not classified_intent or confidence < 0.85:
             prompt = (
@@ -520,13 +640,17 @@ def build_inbox_agent_graph(
             parsed = response.parsed_json or {}
             classified_intent = parsed.get("intent", "general_inquiry")
             confidence = float(parsed.get("confidence", 0.7))
-            extracted_data = parsed.get("extracted_data", {})
+            llm_extracted = parsed.get("extracted_data", {})
+            for k, v in llm_extracted.items():
+                if v and k not in extracted_data:
+                    extracted_data[k] = v
 
+        final_extracted = {**extracted_freight, **extracted_data}
         return {
             "intent": classified_intent,
             "intent_confidence": confidence,
             "confidence": confidence,
-            "extracted_data": extracted_data,
+            "extracted_data": final_extracted,
         }
 
     # ---------------- Node 5: Propose Action ---------------- #
@@ -540,19 +664,24 @@ def build_inbox_agent_graph(
         proposed_action: Optional[Dict[str, Any]] = None
 
         if intent == "pickup_confirmation":
+            p_date = extracted.get("pickup_date") or datetime.now(timezone.utc).isoformat()
             if shipment:
-                p_date = extracted.get("pickup_date") or datetime.now(timezone.utc).isoformat()
+                args = {
+                    "shipment_id": shipment["id"],
+                    "status": "picked_up",
+                    "pickup_date": p_date,
+                    "reason": "Carrier confirmed pickup in email communication",
+                    "idempotency_key": f"pickup-{shipment['id']}-{trigger_id}",
+                }
+                for f in ("carrier_name", "carrier_reference", "bol_number", "origin_address", "destination_address", "eta", "weight_lbs", "pallet_count"):
+                    if extracted.get(f) is not None:
+                        args[f] = extracted[f]
+
                 proposed_action = {
                     "tool_name": "update_shipment",
-                    "arguments": {
-                        "shipment_id": shipment["id"],
-                        "status": "picked_up",
-                        "pickup_date": p_date,
-                        "reason": "Carrier confirmed pickup in email communication",
-                        "idempotency_key": f"pickup-{shipment['id']}-{trigger_id}",
-                    },
+                    "arguments": args,
                     "risk_level": "low",
-                    "reason": "Update canonical shipment status to picked_up with confirmed timestamp",
+                    "reason": "Update canonical shipment status to picked_up with confirmed timestamp and transit details",
                 }
             else:
                 # No shipment resolved for pickup -> auto-create shipment from extracted info or candidate ID
@@ -566,53 +695,86 @@ def build_inbox_agent_graph(
                     m = re.search(r'(?:load|shipment|pro|order)[\s#:]*([a-zA-Z0-9-]+)', f"{state.get('subject')} {state.get('body')}", re.I)
                     if m:
                         cand_val = m.group(1)
-                
-                load_id = str(extracted.get("load_id") or cand_val or "4839")
-                p_date = extracted.get("pickup_date") or datetime.now(timezone.utc).isoformat()
+
+                load_id = str(extracted.get("load_id") or cand_val or "LXA-1001")
                 sender = state.get("sender") or ""
                 carrier_guess = extracted.get("carrier_name")
                 if not carrier_guess and "@" in sender:
                     dom = sender.split("@")[1].split(".")[0].capitalize()
-                    carrier_guess = dom if dom not in ("Gmail", "Yahoo", "Outlook", "Hotmail") else "Estes Express Lines"
+                    carrier_guess = dom if dom not in ("Gmail", "Yahoo", "Outlook", "Hotmail") else "ABC Freight LLC"
+
+                args = {
+                    "load_id": load_id,
+                    "shipment_number": f"SHP-{load_id}",
+                    "carrier_name": extracted.get("carrier_name") or carrier_guess or "ABC Freight LLC",
+                    "status": "picked_up",
+                    "pickup_date": p_date,
+                }
+                for f in ("carrier_reference", "bol_number", "origin_address", "destination_address", "eta", "weight_lbs", "pallet_count"):
+                    if extracted.get(f) is not None:
+                        args[f] = extracted[f]
 
                 proposed_action = {
                     "tool_name": "create_shipment",
-                    "arguments": {
-                        "load_id": load_id,
-                        "shipment_number": f"SHP-{load_id}",
-                        "carrier_name": carrier_guess or "Estes Express Lines",
-                        "status": "picked_up",
-                        "pickup_date": p_date,
-                    },
+                    "arguments": args,
                     "risk_level": "low",
-                    "reason": f"Auto-created new canonical shipment for Load {load_id} with confirmed pickup status",
+                    "reason": f"Auto-created new canonical shipment for Load {load_id} with confirmed pickup status and transit details",
                 }
 
         elif intent == "eta_update":
+            new_eta = extracted.get("eta") or datetime.now(timezone.utc).isoformat()
             if shipment:
-                new_eta = extracted.get("eta") or datetime.now(timezone.utc).isoformat()
+                args = {
+                    "shipment_id": shipment["id"],
+                    "eta": new_eta,
+                    "reason": "Carrier reported new ETA in email communication",
+                    "idempotency_key": f"eta-{shipment['id']}-{trigger_id}",
+                }
+                for f in ("carrier_name", "carrier_reference", "bol_number", "origin_address", "destination_address", "status", "pickup_date", "weight_lbs", "pallet_count"):
+                    if extracted.get(f) is not None:
+                        args[f] = extracted[f]
+
                 proposed_action = {
                     "tool_name": "update_shipment",
-                    "arguments": {
-                        "shipment_id": shipment["id"],
-                        "eta": new_eta,
-                        "reason": "Carrier reported new ETA in email communication",
-                        "idempotency_key": f"eta-{shipment['id']}-{trigger_id}",
-                    },
+                    "arguments": args,
                     "risk_level": "low",
-                    "reason": "Update canonical shipment ETA with carrier provided estimate",
+                    "reason": "Update canonical shipment ETA with carrier provided estimate and transit details",
                 }
             else:
+                import re
+                cand = state.get("resolver_result", {}).get("evidence", {}).get("extracted_candidates") or []
+                cand_val = None
+                if cand:
+                    c = cand[0]
+                    cand_val = str(c.get("normalized_value") or c.get("raw_value") or c.get("value") or c)
+                if not cand_val:
+                    m = re.search(r'(?:load|shipment|pro|order)[\s#:]*([a-zA-Z0-9-]+)', f"{state.get('subject')} {state.get('body')}", re.I)
+                    if m:
+                        cand_val = m.group(1)
+
+                load_id = str(extracted.get("load_id") or cand_val or "ETA-LOAD")
+                sender = state.get("sender") or ""
+                carrier_guess = extracted.get("carrier_name")
+                if not carrier_guess and "@" in sender:
+                    dom = sender.split("@")[1].split(".")[0].capitalize()
+                    carrier_guess = dom if dom not in ("Gmail", "Yahoo", "Outlook", "Hotmail") else "Freight Carrier"
+
+                args = {
+                    "load_id": load_id,
+                    "shipment_number": f"SHP-{load_id}",
+                    "carrier_name": extracted.get("carrier_name") or carrier_guess or "Freight Carrier",
+                    "status": "in_transit",
+                    "eta": new_eta,
+                }
+                for f in ("carrier_reference", "bol_number", "origin_address", "destination_address", "pickup_date", "weight_lbs", "pallet_count"):
+                    if extracted.get(f) is not None:
+                        args[f] = extracted[f]
+
                 proposed_action = {
-                    "tool_name": "create_task",
-                    "arguments": {
-                        "title": f"Review unmatched ETA update: {state.get('subject')}",
-                        "task_type": "review",
-                        "description": "ETA update received but shipment was not identified.",
-                        "idempotency_key": f"task-unmatched-eta-{trigger_id}",
-                    },
-                    "risk_level": "medium",
-                    "reason": "Unmatched ETA email requires operator review",
+                    "tool_name": "create_shipment",
+                    "arguments": args,
+                    "risk_level": "low",
+                    "reason": f"Auto-created new canonical shipment for Load {load_id} with updated ETA and transit details",
                 }
 
         elif intent == "missing_information":
@@ -658,25 +820,30 @@ def build_inbox_agent_graph(
                 if m:
                     cand_val = m.group(1)
             
-            if cand_val:
+            load_id = str(extracted.get("load_id") or cand_val or "")
+            if load_id:
                 sender = state.get("sender") or ""
-                carrier_guess = state.get("extracted_data", {}).get("carrier_name")
+                carrier_guess = extracted.get("carrier_name")
                 if not carrier_guess and "@" in sender:
                     dom = sender.split("@")[1].split(".")[0].capitalize()
                     carrier_guess = dom if dom not in ("Gmail", "Yahoo", "Outlook", "Hotmail") else "Estes Express Lines"
                 
-                is_pickup = "pickup" in (state.get("subject") or "").lower() or "pickup" in (state.get("body") or "").lower()
+                is_pickup = "pickup" in (state.get("subject") or "").lower() or "pickup" in (state.get("body") or "").lower() or "picked up" in (state.get("body") or "").lower()
+                args = {
+                    "load_id": load_id,
+                    "shipment_number": f"SHP-{load_id}",
+                    "carrier_name": extracted.get("carrier_name") or carrier_guess or "Estes Express Lines",
+                    "status": "picked_up" if is_pickup else "created",
+                }
+                for f in ("carrier_reference", "bol_number", "origin_address", "destination_address", "pickup_date", "eta", "weight_lbs", "pallet_count"):
+                    if extracted.get(f) is not None:
+                        args[f] = extracted[f]
+
                 proposed_action = {
                     "tool_name": "create_shipment",
-                    "arguments": {
-                        "load_id": str(cand_val),
-                        "shipment_number": f"SHP-{cand_val}",
-                        "carrier_name": carrier_guess or "Estes Express Lines",
-                        "status": "picked_up" if is_pickup else "created",
-                        "pickup_date": state.get("extracted_data", {}).get("pickup_date") or datetime.now(timezone.utc).isoformat(),
-                    },
+                    "arguments": args,
                     "risk_level": "low",
-                    "reason": f"Auto-created new canonical shipment for Load {cand_val} received in inbound communication",
+                    "reason": f"Auto-created new canonical shipment for Load {load_id} with full extracted freight details",
                 }
             else:
                 proposed_action = {

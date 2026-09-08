@@ -36,6 +36,21 @@ class InboxConnectionRepository(BaseRepository[InboxConnection]):
             stmt = stmt.where(InboxConnection.provider == provider)
         return list(self.db.execute(stmt).scalars().all())
 
+    def get_active_by_provider(
+        self, organization_id: uuid.UUID, provider: str = "gmail"
+    ) -> Optional[InboxConnection]:
+        """Retrieve the most recently active connection for an organization and provider."""
+        stmt = (
+            select(InboxConnection)
+            .where(
+                InboxConnection.organization_id == organization_id,
+                InboxConnection.provider == provider,
+                InboxConnection.status == "active",
+            )
+            .order_by(InboxConnection.updated_at.desc())
+        )
+        return self.db.execute(stmt).scalars().first()
+
     def upsert_connection(
         self,
         organization_id: uuid.UUID,
