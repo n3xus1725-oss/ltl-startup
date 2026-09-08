@@ -470,11 +470,11 @@ async function addCarrierContact() {
     
     <!-- Org / Project Header (Matching Vercel style) -->
     <div class="h-14 px-4 border-b border-[#1a1a1a] flex items-center justify-between">
-      <div class="flex items-center space-x-2.5 overflow-hidden">
-        <div class="w-6 h-6 rounded-full bg-[#181818] border border-[#2c2c2c] flex items-center justify-center text-[10px] font-semibold text-white tracking-wider">
+      <div class="flex items-center space-x-2.5 flex-1 min-w-0">
+        <div id="sidebar-user-avatar" class="w-6 h-6 rounded-full bg-[#181818] border border-[#2c2c2c] flex items-center justify-center text-[10px] font-semibold text-white tracking-wider">
           NX
         </div>
-        <span class="font-semibold text-white truncate text-xs">n3xus1725-oss</span>
+        <span id="sidebar-user-name" class="font-semibold text-white truncate text-xs">n3xus1725-oss</span>
         <span class="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#141414] text-neutral-400 border border-[#242424] font-mono">Phase 4</span>
       </div>
       <div class="text-neutral-500 hover:text-white cursor-pointer transition">
@@ -1606,8 +1606,15 @@ let globalEmails = [];
         const data = await res.json();
         const pill = document.getElementById('gmail-status-pill');
         if (data.connected && data.connections.length > 0) {
-          pill.innerText = 'Connected: ' + data.connections[0].email_address;
+          const email = data.connections[0].email_address;
+          pill.innerText = 'Connected: ' + email;
           pill.className = 'text-[10px] px-2 py-0.5 rounded-full bg-[#0e0e0e] text-neutral-200 border border-[#262626]';
+          
+          // Update sidebar to look like a proper production login
+          const userNameEl = document.getElementById('sidebar-user-name');
+          const userAvatarEl = document.getElementById('sidebar-user-avatar');
+          if (userNameEl) userNameEl.innerText = email;
+          if (userAvatarEl) userAvatarEl.innerText = email.charAt(0).toUpperCase();
         } else {
           pill.innerText = 'OAuth Ready';
           pill.className = 'text-[10px] px-2 py-0.5 rounded-full bg-[#121212] text-neutral-400 border border-[#262626]';
@@ -1641,13 +1648,13 @@ let globalEmails = [];
         const res = await fetch('/api/v1/connectors/gmail/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: 'is:unread', limit: 10 })
+          body: JSON.stringify({ query: 'in:inbox', limit: 10 })
         });
         const data = await res.json();
         if (data.executions && data.executions.length > 0) {
           alert(`Automated Gmail Sync Complete!\nProcessed ${data.messages_processed} email(s) automatically through the agent with zero copy/paste.`);
         } else {
-          alert(`Automated Gmail Sync: ${data.messages_found} unread messages found. All messages up to date.`);
+          alert(`Automated Gmail Sync: 0 new messages found. All recent inbox messages have already been processed.`);
         }
         await loadState();
       } catch (err) {

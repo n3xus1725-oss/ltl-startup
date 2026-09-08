@@ -175,6 +175,16 @@ async def root(request: Request):
     }
 
 
+@app.get("/login", response_class=HTMLResponse, tags=["Authentication"])
+async def login():
+    """Production-level login page."""
+    try:
+        html = (Path(__file__).resolve().parent / "templates" / "login.html").read_text(encoding="utf-8")
+        return HTMLResponse(content=html)
+    except Exception:
+        return HTMLResponse("<h1>Login unavailable</h1>", status_code=500)
+
+
 @app.get("/dashboard", response_class=HTMLResponse, tags=["Testing Dashboard"])
 async def dashboard():
     """Phase 1 Testing Dashboard for evaluating incoming emails and agent execution."""
