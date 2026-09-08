@@ -649,165 +649,80 @@ async function addCarrierContact() {
     <main class="flex-1 overflow-y-auto p-6 lg:p-8 space-y-8 max-w-[1440px] w-full mx-auto">
       
       <!-- TAB 1: INBOX AGENT -->
-      <div id="section-inbox" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      <!-- Left Column: Mailbox & Scenarios (5 cols) -->
-      <div class="lg:col-span-5 flex flex-col space-y-4">
-        <!-- Live Gmail Connection & Sync Panel -->
-        <div class="bg-[#0a0a0a] border border-[#262626] rounded-xl p-3.5 shadow-sm">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center space-x-2">
-              <span class="text-sm">📧</span>
-              <span class="text-xs font-semibold text-white">Gmail Live Connector</span>
-            </div>
-            <span id="gmail-status-pill" class="text-[10px] px-2 py-0.5 rounded-full bg-[#121212] text-neutral-400 border border-[#262626]">
-              OAuth Ready
-            </span>
-          </div>
-          <p class="text-[11px] text-neutral-400 mb-2.5">
-            Connect Google Workspace/Gmail or run hands-free inbox synchronization:
-          </p>
-          <div class="flex items-center space-x-2">
-            <button onclick="connectGmailOAuth()" class="flex-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-neutral-200 text-black text-white text-xs font-medium transition flex items-center justify-center">
-              <span class="mr-1">🔑</span> Connect Google
-            </button>
-            <button onclick="syncLiveGmail()" id="btn-sync-gmail" class="flex-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-neutral-200 text-black text-white text-xs font-medium transition flex items-center justify-center">
-              <span class="mr-1">⚡</span> Sync Live Inbox
-            </button>
-          </div>
-        </div>
-
-        <div class="bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl p-4 shadow-sm">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-sm font-semibold text-white flex items-center">
-              <span class="text-base mr-2">📬</span> Inbound Test Mailbox
-            </h2>
-            <span id="mail-count" class="text-xs bg-[#121212] text-neutral-400 px-2 py-0.5 rounded-full">Loading...</span>
-          </div>
-          <p class="text-xs text-neutral-400 mb-3">Select a scenario to test extraction, truth verification, and tool guardrails:</p>
-          
-          <!-- Scenario List -->
-          <div id="email-scenarios" class="space-y-2 max-h-56 overflow-y-auto pr-1"></div>
-        </div>
-
-        <!-- Active Email Inspector / Composer -->
-        <div class="bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl p-4 shadow-sm flex-1 flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-neutral-400">Email Message Payload</h3>
-            <button onclick="toggleComposer()" class="text-xs text-neutral-200 hover:text-neutral-200">
-              + Compose Custom
-            </button>
-          </div>
-
-          <div class="space-y-2 text-xs flex-1 flex flex-col">
-            <div>
-              <label class="text-neutral-500 block mb-0.5">Sender</label>
-              <input id="input-sender" type="text" class="w-full bg-black border border-[#1e1e1e] rounded px-2.5 py-1.5 text-neutral-200 focus:border-[#333333] focus:outline-none" />
+            <!-- TAB 1: INBOX AGENT -->
+      <div id="section-inbox" class="flex flex-col gap-6" style="min-height: calc(100vh - 120px);">
+        <!-- Top Bar: Action & Connection Status -->
+        <div class="flex flex-col sm:flex-row items-center justify-between bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl p-5 shadow-sm shrink-0">
+          <div class="flex items-center space-x-4 mb-4 sm:mb-0">
+            <div class="flex items-center justify-center w-10 h-10 rounded-full bg-[#121212] border border-[#262626]">
+              <span class="text-xl">??</span>
             </div>
             <div>
-              <label class="text-neutral-500 block mb-0.5">Subject</label>
-              <input id="input-subject" type="text" class="w-full bg-black border border-[#1e1e1e] rounded px-2.5 py-1.5 text-neutral-200 focus:border-[#333333] focus:outline-none font-medium" />
-            </div>
-            <div class="flex-1 flex flex-col">
-              <label class="text-neutral-500 block mb-0.5">Body</label>
-              <textarea id="input-body" rows="5" class="w-full flex-1 bg-black border border-[#1e1e1e] rounded p-2 text-neutral-200 focus:border-[#333333] focus:outline-none font-mono text-xs"></textarea>
+              <h2 class="text-base font-semibold text-white">Inbox Agent Overview</h2>
+              <div id="gmail-status-pill" class="text-xs text-neutral-500 mt-0.5">Connected and monitoring</div>
             </div>
           </div>
-
-          <button id="btn-process" onclick="processActiveEmail()" class="mt-4 w-full py-2.5 px-4 rounded-lg bg-white hover:bg-neutral-200 text-black text-white font-medium text-sm flex items-center justify-center space-x-2 transition shadow-lg ">
-            <span>⚡ Run Upgraded Inbox Agent (Phase 2.6)</span>
-          </button>
+          <div class="flex items-center space-x-4">
+             <div id="last-synced-time" class="text-xs text-neutral-500 hidden sm:block">Last Synced: Just now</div>
+             <button onclick="syncLiveGmail()" id="btn-sync-gmail" class="px-5 py-2.5 rounded-lg bg-white hover:bg-neutral-200 text-black text-sm font-semibold transition flex items-center justify-center shadow-lg shadow-white/10">
+               <span class="mr-2">?</span> Sync Live Inbox
+             </button>
+          </div>
         </div>
-      </div>
 
-      <!-- Right Column: Live Agent Execution & Trace (7 cols) -->
-      <div class="lg:col-span-7 flex flex-col space-y-4">
-        <div class="bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl p-4 shadow-sm flex-1 flex flex-col">
-          <div class="flex items-center justify-between border-b border-[#1e1e1e] pb-3 mb-4">
-            <div class="flex items-center space-x-2">
-              <span class="text-base">🧠</span>
-              <h2 class="text-sm font-semibold text-white">Live Execution Trace with Truth Engine</h2>
+        <!-- Main Split: Live Shipments (Left) & Activity Feed (Right) -->
+        <div class="flex flex-col lg:flex-row flex-1 overflow-hidden gap-6">
+          <!-- Left: Shipments Data (Supabase) -->
+          <div class="flex-[2] flex flex-col bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl shadow-sm overflow-hidden min-h-[500px]">
+            <div class="border-b border-[#1e1e1e] bg-[#050505] px-5 py-4 flex items-center justify-between shrink-0">
+               <h2 class="text-sm font-semibold text-white flex items-center">
+                  <span class="mr-2">???</span> Supabase Live Shipments Database
+               </h2>
+               <button onclick="refreshTables()" class="px-3 py-1.5 rounded-md bg-[#121212] hover:bg-[#1a1a1a] border border-[#262626] text-neutral-300 transition flex items-center text-xs font-medium">
+                 <span class="mr-1">?</span> Refresh Data
+               </button>
             </div>
-            <span id="trace-status" class="text-xs px-2.5 py-0.5 rounded-full bg-[#121212] text-neutral-400">Idle / Awaiting Trigger</span>
+            <div class="flex-1 overflow-auto bg-black p-0 relative">
+               <table class="w-full text-left border-collapse min-w-[700px]">
+                 <thead class="sticky top-0 bg-[#050505] z-10 shadow-sm border-b border-[#1e1e1e]">
+                   <tr class="text-neutral-400 text-[10px] uppercase tracking-wider">
+                     <th class="px-5 py-3 font-medium">Load ID</th>
+                     <th class="px-5 py-3 font-medium">Shipment #</th>
+                     <th class="px-5 py-3 font-medium">Status</th>
+                     <th class="px-5 py-3 font-medium">Carrier</th>
+                     <th class="px-5 py-3 font-medium">Route</th>
+                     <th class="px-5 py-3 font-medium">Pickup Date</th>
+                   </tr>
+                 </thead>
+                 <tbody id="inbox-shipments-tbody" class="text-xs text-neutral-300">
+                   <tr><td colspan="6" class="text-center py-8 text-neutral-500">Loading live data...</td></tr>
+                 </tbody>
+               </table>
+            </div>
           </div>
 
-          <!-- Trace Visualizer Content -->
-          <div id="trace-container" class="space-y-4 flex-1 overflow-y-auto pr-1">
-            <!-- Placeholder before first run -->
-            <div id="trace-placeholder" class="h-64 flex flex-col items-center justify-center text-center p-8 border border-dashed border-[#1e1e1e] rounded-lg">
-              <div class="w-12 h-12 rounded-full bg-[#121212] flex items-center justify-center text-2xl mb-3">🚚</div>
-              <h3 class="text-sm font-medium text-neutral-300">Ready to Evaluate Upgraded Agent</h3>
-              <p class="text-xs text-neutral-500 max-w-sm mt-1">
-                Select an email on the left and click <strong class="text-neutral-200">"Run Upgraded Inbox Agent"</strong> to watch resolution, document extraction, truth engine verification, conflict guardrails, and canonical mutations.
-              </p>
+          <!-- Right: Inbox Agent Activity Feed -->
+          <div class="flex-1 flex flex-col bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl shadow-sm overflow-hidden min-h-[500px] min-w-[320px]">
+            <div class="border-b border-[#1e1e1e] bg-[#050505] px-5 py-4 flex items-center justify-between shrink-0">
+               <h2 class="text-sm font-semibold text-white flex items-center">
+                  <span class="mr-2">??</span> AI Agent Activity
+               </h2>
+               <span id="trace-status" class="text-[10px] px-2.5 py-1 rounded-full bg-[#121212] text-neutral-400 border border-[#262626]">Awaiting Sync</span>
             </div>
-
-            <!-- Step 1: Entity Resolution -->
-            <div id="trace-step-resolver" class="hidden bg-black border border-[#1e1e1e] rounded-lg p-3.5">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-neutral-200 flex items-center">
-                  <span class="w-2 h-2 rounded-full bg-white mr-1.5"></span> 1. Deterministic Shipment Resolver
-                </span>
-                <span id="match-badge" class="text-xs px-2 py-0.5 rounded bg-[#0e0e0e] text-neutral-200 border border-[#262626]">Matched</span>
-              </div>
-              <div id="matched-shipment-details" class="text-xs text-neutral-300 bg-[#0a0a0a] rounded p-2 border border-[#1e1e1e] font-mono"></div>
-            </div>
-
-            <!-- Step 2: Truth & Conflict Engine (Phase 2.6) -->
-            <div id="trace-step-truth" class="hidden bg-black border border-[#1e1e1e] rounded-lg p-3.5">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-neutral-200 flex items-center">
-                  <span class="w-2 h-2 rounded-full bg-neutral-300 mr-1.5"></span> 2. Source-of-Truth & Conflict Engine (Phase 2.6)
-                </span>
-                <span id="truth-badge" class="text-xs px-2 py-0.5 rounded bg-[#0e0e0e] text-neutral-200 border border-[#262626]">Truth Checked</span>
-              </div>
-              <div id="truth-details" class="text-xs text-neutral-300 bg-[#0a0a0a] rounded p-2 border border-[#1e1e1e] font-mono"></div>
-            </div>
-
-            <!-- Step 3: Intent Classification & Decision -->
-            <div id="trace-step-decision" class="hidden bg-black border border-[#1e1e1e] rounded-lg p-3.5">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-neutral-200 flex items-center">
-                  <span class="w-2 h-2 rounded-full bg-neutral-400 mr-1.5"></span> 3. LangGraph Intent & Propose Action
-                </span>
-                <span id="confidence-badge" class="text-xs px-2 py-0.5 rounded bg-[#0e0e0e] text-neutral-200 border border-[#262626]">Confidence: 100%</span>
-              </div>
-              <div id="decision-details" class="text-xs text-neutral-300 bg-[#0a0a0a] rounded p-2 border border-[#1e1e1e]"></div>
-            </div>
-
-            <!-- Step 4: Tool Invocations -->
-            <div id="trace-step-tools" class="hidden bg-black border border-[#1e1e1e] rounded-lg p-3.5">
-              <span class="text-xs font-semibold text-neutral-300 block mb-2 flex items-center">
-                <span class="w-2 h-2 rounded-full bg-neutral-500 mr-1.5"></span> 4. Typed Tool Execution (Validated Side-Effects)
-              </span>
-              <div id="tool-calls-list" class="space-y-2"></div>
-            </div>
-
-            <!-- Step 5: Database State Diff -->
-            <div id="trace-step-diff" class="hidden bg-black border border-[#1e1e1e] rounded-lg p-3.5">
-              <span class="text-xs font-semibold text-neutral-200 block mb-2 flex items-center">
-                <span class="w-2 h-2 rounded-full bg-neutral-300 mr-1.5"></span> 5. Database State Mutation (Before vs After)
-              </span>
-              <div id="diff-content" class="text-xs font-mono bg-[#0a0a0a] p-2.5 rounded border border-[#1e1e1e]"></div>
-            </div>
-
-            <!-- Step 6: Audit Log -->
-            <div id="trace-step-audit" class="hidden bg-black border border-[#1e1e1e] rounded-lg p-3.5">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-neutral-200 flex items-center">
-                  <span class="w-2 h-2 rounded-full bg-neutral-400 mr-1.5"></span> 6. Immutable Audit Log Entry
-                </span>
-                <span id="audit-idempotency-badge" class="text-xs text-neutral-500 font-mono"></span>
-              </div>
-              <div id="audit-content" class="text-xs font-mono bg-[#0a0a0a] p-2.5 rounded border border-[#1e1e1e] text-neutral-400"></div>
+            <div id="trace-container" class="flex-1 overflow-y-auto p-4 bg-black relative">
+               <div id="sync-summary-result" class="w-full">
+                 <div class="h-full min-h-[300px] flex flex-col items-center justify-center text-center p-8 border border-dashed border-[#1e1e1e] rounded-lg mt-4">
+                   <div class="w-12 h-12 rounded-full bg-[#121212] flex items-center justify-center text-2xl mb-3 border border-[#262626]">??</div>
+                   <h3 class="text-sm font-medium text-neutral-300">Ready to Process</h3>
+                   <p class="text-xs text-neutral-500 mt-2 max-w-[200px] mx-auto leading-relaxed">Click 'Sync Live Inbox' above to fetch and process new emails automatically.</p>
+                 </div>
+               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- TAB 2: CANONICAL MODEL & PROVENANCE INSPECTOR (Phase 2.1) -->
-
-      <!-- TAB 2: CANONICAL MODEL -->
+<!-- TAB 2: CANONICAL MODEL -->
       <div id="section-canonical" class="hidden flex flex-col space-y-4">
       <div class="bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl p-4 shadow-sm">
         <div class="flex items-center justify-between mb-4">
@@ -1393,7 +1308,7 @@ async function addCarrierContact() {
     <!-- END TAB 8 -->
 
   <!-- Bottom Explorer: Supabase Live Tables -->
-  <section class="max-w-7xl w-full mx-auto px-6 pb-8">
+  <section id="global-bottom-explorer" class="max-w-7xl w-full mx-auto px-6 pb-8 hidden">
 
       <!-- BOTTOM SECTION: SUPABASE LIVE DATA EXPLORER -->
       <div class="bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl p-4 shadow-sm">
@@ -1549,6 +1464,11 @@ let globalEmails = [];
       };
       
       const titleEl = document.getElementById('current-tab-breadcrumb');
+      const globalBottom = document.getElementById('global-bottom-explorer');
+      if (globalBottom) {
+        if (tab === 'inbox') globalBottom.classList.add('hidden');
+        else globalBottom.classList.remove('hidden');
+      }
       if (titleEl && titles[tab]) titleEl.innerText = titles[tab];
 
       ['inbox', 'canonical', 'conflicts', 'documents', 'retrieval', 'simulation', 'audit', 'dispute'].forEach(t => {
@@ -2636,25 +2556,26 @@ Received in good order and condition.`
 
         // Render Shipments
         const shipBody = document.getElementById('shipments-tbody');
+        const shipBodyInbox = document.getElementById('inbox-shipments-tbody');
         if (shipments && shipments.length > 0) {
-          shipBody.innerHTML = shipments.map(s => `
+          const htmlRows = shipments.map(s => `
             <tr class="hover:bg-[#121212] transition">
-              <td class="py-2 px-3 font-semibold text-white">${s.load_id || '-'}</td>
-              <td class="py-2 px-3 font-mono text-neutral-400">${s.shipment_number}</td>
-              <td class="py-2 px-3">
+              <td class="py-3 px-5 font-semibold text-white">${s.load_id || '-'}</td>
+              <td class="py-3 px-5 font-mono text-neutral-400">${s.shipment_number}</td>
+              <td class="py-3 px-5">
                 <span class="px-2 py-0.5 rounded text-[11px] font-medium ${getStatusClass(s.status)}">
                   ${s.status}
                 </span>
               </td>
-              <td class="py-2 px-3">${s.carrier_name || '-'}</td>
-              <td class="py-2 px-3 font-mono">${s.carrier_reference || '-'}</td>
-              <td class="py-2 px-3 font-mono">${s.bol_number || '-'}</td>
-              <td class="py-2 px-3 text-neutral-400">${s.origin?.city || ''}, ${s.origin?.state || ''} &rarr; ${s.destination?.city || ''}, ${s.destination?.state || ''}</td>
-              <td class="py-2 px-3 text-neutral-400">${formatDate(s.pickup_date)}</td>
-              <td class="py-2 px-3 text-neutral-400">${formatDate(s.eta)}</td>
-              <td class="py-2 px-3 text-neutral-200 font-mono">${s.weight_lbs ? s.weight_lbs + ' lbs' : '-'}</td>
+              <td class="py-3 px-5 text-neutral-400">${s.carrier_id || '-'}</td>
+              <td class="py-3 px-5 text-neutral-400">
+                ${s.origin_city ? s.origin_city.substring(0, 8) + ' ? ' + (s.dest_city ? s.dest_city.substring(0, 8) : '') : '-'}
+              </td>
+              <td class="py-3 px-5 font-mono text-neutral-400">${s.pickup_date ? s.pickup_date.split('T')[0] : '-'}</td>
             </tr>
           `).join('');
+          shipBody.innerHTML = htmlRows;
+          if (shipBodyInbox) shipBodyInbox.innerHTML = htmlRows;
         } else {
           shipBody.innerHTML = `<tr><td colspan="10" class="text-center py-4 text-neutral-500">No shipments found. Click "Reset / Seed Test Data" above.</td></tr>`;
         }
