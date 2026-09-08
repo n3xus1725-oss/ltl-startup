@@ -47,8 +47,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = Field(default=None)
     LITELLM_API_KEY: Optional[str] = Field(default=None)
     GEMINI_API_KEY: Optional[str] = Field(default=None)
-    DEFAULT_MODEL: str = Field(default="gemini/gemini-1.5-flash")
-    REASONING_MODEL: str = Field(default="gemini/gemini-1.5-pro")
+    DEFAULT_MODEL: str = Field(default="gemini/gemini-2.5-flash")
+    REASONING_MODEL: str = Field(default="gemini/gemini-2.5-pro")
 
     # Connector / Mailbox Settings
     GMAIL_CLIENT_ID: Optional[str] = Field(default=None)
