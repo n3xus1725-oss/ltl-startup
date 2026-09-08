@@ -25,7 +25,7 @@ router = APIRouter(prefix="/connectors", tags=["Connectors"])
 
 class SyncGmailRequest(BaseModel):
     organization_id: Optional[str] = Field(default=None, description="Optional target organization UUID")
-    query: Optional[str] = Field(default="is:unread", description="Gmail search query")
+    query: Optional[str] = Field(default="in:inbox", description="Gmail search query")
     limit: int = Field(default=10, ge=1, le=50, description="Max messages to sync")
 
 

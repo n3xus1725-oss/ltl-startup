@@ -130,8 +130,6 @@ class GmailConnector(BaseEmailConnector):
 
         if mock_mode is not None:
             self.mock_mode = mock_mode
-        elif settings.MOCK_EMAIL_CONNECTOR:
-            self.mock_mode = True
         elif self.credentials and (
             self.credentials.get("access_token")
             or (
@@ -141,6 +139,8 @@ class GmailConnector(BaseEmailConnector):
             )
         ):
             self.mock_mode = False
+        elif settings.MOCK_EMAIL_CONNECTOR:
+            self.mock_mode = True
         else:
             self.mock_mode = True
 
