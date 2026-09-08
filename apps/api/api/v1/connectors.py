@@ -3,7 +3,7 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -125,7 +125,9 @@ async def gmail_oauth_callback(
             credentials=encrypt_credentials(token_data),
         )
         logger.info(f"Successfully connected Gmail inbox for {email_addr}")
-        return RedirectResponse(url=f"/dashboard?gmail=connected&email={email_addr}")
+        response = RedirectResponse(url=f"/dashboard?gmail=connected&email={email_addr}")
+        response.set_cookie(key="auth_token", value=str(org_id), httponly=True, max_age=86400)
+        return response
     except Exception as exc:
         logger.error(f"Failed to complete Gmail OAuth callback: {exc}")
         return {"status": "error", "message": str(exc)}
@@ -158,36 +160,36 @@ def get_gmail_status(
 
 @router.post("/gmail/sync")
 async def sync_gmail_inbox(
-    payload: SyncGmailRequest,
+    request: SyncGmailRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    """Automated Inbox Sync: Fetch emails from Gmail API, ingest events, download attachments,
-    and process through the Autonomous Agent with ZERO copy/paste.
-    """
-    org = _get_org(db, payload.organization_id)
+    """Trigger manual or headless sync of Gmail inbox matching a query."""
+    org = _get_org(db, request.organization_id)
     conn_repo = InboxConnectionRepository(db)
-    connections = conn_repo.list_by_org(org.id, provider="gmail")
-    active_conn = connections[0] if connections else None
 
-    # Instantiate connector with active credentials
+    active_conn = conn_repo.get_active_by_provider(org.id, "gmail")
+    if not active_conn and not request.mock_mode:
+        raise HTTPException(
+            status_code=400,
+            detail="No active Gmail connection found for organization",
+        )
+
     connector = GmailConnector(
         organization_id=org.id,
         db=db,
         inbox_connection_id=active_conn.id if active_conn else None,
+        mock_mode=request.mock_mode,
     )
-
-    # 1. Fetch messages directly from Gmail
-    messages = await connector.fetch_messages(query=payload.query, limit=payload.limit)
+    messages = await connector.fetch_messages(query=request.query, limit=request.limit)
 
     dispatcher = EventDispatcher(db)
     agent_service = InboxAgentService(db=db)
     results: List[Dict[str, Any]] = []
 
     for msg in messages:
-        # 2. Retrieve attachments if present
         attachments = await connector.get_attachments(msg["id"])
 
-        # 3. Formulate canonical inbound event
         inbound = InboundEventPayload(
             organization_id=org.id,
             source="gmail",
@@ -214,7 +216,6 @@ async def sync_gmail_inbox(
             })
             continue
 
-        # 4. Trigger Autonomous Inbox Agent automatically
         agent_input = InboxAgentInput(
             organization_id=str(org.id),
             trigger_event_id=str(event.event_id),
@@ -226,6 +227,12 @@ async def sync_gmail_inbox(
         )
 
         output = await agent_service.run(agent_input)
+        
+        # 5. E2E Orchestration: if a shipment was matched/created, trigger the pipeline
+        if output.entity_id:
+            from apps.worker.pipeline import process_e2e_pipeline
+            background_tasks.add_task(process_e2e_pipeline, str(org.id), output.entity_id)
+
         results.append({
             "message_id": msg["id"],
             "subject": msg.get("subject"),

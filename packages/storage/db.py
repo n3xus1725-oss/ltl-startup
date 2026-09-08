@@ -22,11 +22,10 @@ if "sqlite" in db_url:
         future=True,
     )
 else:
+    from sqlalchemy.pool import NullPool
     engine = create_engine(
         db_url,
-        pool_pre_ping=True,
-        pool_size=10,
-        max_overflow=20,
+        poolclass=NullPool,
         future=True,
     )
 

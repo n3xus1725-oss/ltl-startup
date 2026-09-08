@@ -2,7 +2,7 @@ import base64
 import json
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -45,6 +45,7 @@ class GmailWebhookPayload(BaseModel):
 @router.post("/gmail-webhook", status_code=status.HTTP_200_OK)
 async def receive_gmail_pubsub_webhook(
     raw_payload: Dict[str, Any],
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """Google Cloud Pub/Sub push notification endpoint for automated, hands-free Gmail ingestion."""
@@ -98,38 +99,48 @@ async def receive_gmail_pubsub_webhook(
         if not msg_id:
             continue
         thread_id = msg.get("threadId") or msg.get("thread_id")
+
+        attachments = await connector.get_attachments(msg_id)
+
         inbound = InboundEventPayload(
             organization_id=org.id,
             source="gmail",
             event_type="email_received",
-            idempotency_key=f"gmail-webhook-{msg_id}",
+            idempotency_key=f"gmail-webhook-{msg_id}-{history_id or 'nohistory'}",
             payload={
                 "message_id": msg_id,
                 "thread_id": thread_id,
                 "sender": msg.get("sender"),
-                "recipients": msg.get("recipients", []),
                 "subject": msg.get("subject"),
                 "body_text": msg.get("body"),
-                "attachments": msg.get("attachments", []),
+                "attachments": attachments,
             },
         )
-        event, is_duplicate = dispatcher.ingest(inbound)
-        if not is_duplicate:
-            agent_input = InboxAgentInput(
-                organization_id=str(org.id),
-                trigger_event_id=str(event.event_id),
-                sender=msg.get("sender") or "carrier@freight.com",
-                subject=msg.get("subject") or "",
-                body_text=msg.get("body") or "",
-                thread_id=thread_id,
-                attachments=msg.get("attachments", []),
-            )
-            res = await agent_service.run(agent_input)
-            processed_events.append({"event_id": str(event.event_id), "run_id": res.run_id})
 
-    return {
-        "status": "acknowledged",
-        "email_address": email_address,
-        "history_id": history_id,
-        "processed_count": len(processed_events),
-    }
+        event, is_duplicate = dispatcher.ingest(inbound)
+        if is_duplicate:
+            continue
+
+        agent_input = InboxAgentInput(
+            organization_id=str(org.id),
+            trigger_event_id=str(event.event_id),
+            message_id=msg_id,
+            thread_id=thread_id,
+            sender=msg.get("sender") or "unknown",
+            subject=msg.get("subject") or "No Subject",
+            body_text=msg.get("body") or "",
+            attachments=attachments,
+        )
+
+        try:
+            output = await agent_service.run(agent_input)
+            
+            if output.entity_id:
+                from apps.worker.pipeline import process_e2e_pipeline
+                background_tasks.add_task(process_e2e_pipeline, str(org.id), output.entity_id)
+                
+            processed_events.append({"event_id": str(event.event_id), "status": output.terminal_outcome})
+        except Exception as e:
+            processed_events.append({"event_id": str(event.event_id), "status": "failed", "error": str(e)})
+
+    return {"status": "ok", "messages_processed": len(processed_events)}
