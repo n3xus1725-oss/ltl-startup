@@ -12,6 +12,7 @@ ALLOWED_INBOX_TOOL_NAMES = [
     "find_shipment",
     "get_shipment",
     "update_shipment",
+    "create_shipment",
     "attach_document",
     "create_task",
     "send_email",

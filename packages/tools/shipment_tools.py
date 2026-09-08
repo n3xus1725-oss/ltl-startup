@@ -498,6 +498,69 @@ class SearchContextTool(BaseTool):
         )
 
 
+
+# ---------------- X. create_shipment ---------------- #
+
+class CreateShipmentInput(BaseModel):
+    shipment_number: str = Field(..., description="Internal or assigned shipment identifier")
+    load_id: Optional[str] = Field(default=None, description="Broker load ID or tender ID")
+    carrier_name: Optional[str] = Field(default=None, description="Name of carrier")
+    status: str = Field(default="created", description="Initial status")
+    pickup_date: Optional[datetime] = Field(default=None, description="Scheduled or confirmed pickup timestamp")
+    delivery_date: Optional[datetime] = Field(default=None, description="Scheduled or confirmed delivery timestamp")
+    weight_lbs: Optional[float] = Field(default=None, description="Total weight in pounds")
+    total_charges: Optional[float] = Field(default=None, description="Total expected charges")
+    metadata_payload: Optional[Dict[str, Any]] = Field(default=None, description="Additional custom metadata")
+
+
+class CreateShipmentOutput(BaseModel):
+    success: bool
+    shipment_id: str
+    message: str
+
+
+class CreateShipmentTool(BaseTool):
+    name = "create_shipment"
+    purpose = "Create a new shipment record when an incoming tender or new load is received."
+    input_schema = CreateShipmentInput
+    output_schema = CreateShipmentOutput
+    required_permission = "shipment:write"
+    external_side_effects = True
+
+    async def execute(
+        self, context: ToolContext, db: Session, input_data: CreateShipmentInput
+    ) -> CreateShipmentOutput:
+        repo = ShipmentRepository(db)
+        
+        # Check if already exists by load_id to avoid dups if they tried to create it blindly
+        if input_data.load_id:
+            existing = repo.find_by_identifier(context.organization_id, input_data.load_id)
+            if existing:
+                return CreateShipmentOutput(
+                    success=False,
+                    shipment_id=str(existing[0].id),
+                    message=f"Shipment already exists with Load ID {input_data.load_id}"
+                )
+
+        shipment = repo.create(
+            organization_id=context.organization_id,
+            shipment_number=input_data.shipment_number,
+            load_id=input_data.load_id,
+            carrier_name=input_data.carrier_name,
+            status=input_data.status,
+            pickup_date=input_data.pickup_date,
+            delivery_date=input_data.delivery_date,
+            weight_lbs=input_data.weight_lbs,
+            total_charges=input_data.total_charges,
+            metadata_payload=input_data.metadata_payload,
+        )
+        return CreateShipmentOutput(
+            success=True,
+            shipment_id=str(shipment.id),
+            message="Shipment created successfully"
+        )
+
+
 def create_standard_tool_registry() -> ToolRegistry:
     """Instantiate and register all standard freight execution tools."""
     registry = ToolRegistry()
@@ -510,5 +573,6 @@ def create_standard_tool_registry() -> ToolRegistry:
     registry.register(ReplyToThreadTool())
     registry.register(CreateExceptionTool())
     registry.register(SearchContextTool())
+    registry.register(CreateShipmentTool())
     return registry
 
